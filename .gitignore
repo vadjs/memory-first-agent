@@ -1,0 +1,21 @@
+# Private materials — never commit
+.desc/
+
+# Secrets & local env
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Runtime artifacts
+logs/
+
+# Local tooling
+.claude/
+.agents/
+.DS_Store
