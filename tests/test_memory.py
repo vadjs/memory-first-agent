@@ -111,7 +111,9 @@ async def test_quarantined_chunks_invisible_to_retrieval(store):
 
 @pytest.mark.redis
 async def test_answer_cache_roundtrip_and_paraphrase_gap(store):
-    await store.put_qa("What is Redis?", "A data store.", ["https://redis.io"], "technology", "static")
+    await store.put_qa(
+        "What is Redis?", "A data store.", ["https://redis.io"], "technology", "static"
+    )
     hit = await store.search_cache("what is redis?")  # case-insensitive normalization
     assert hit is not None and hit.similarity > 0.99
     assert hit.answer == "A data store."
@@ -122,7 +124,9 @@ async def test_answer_cache_roundtrip_and_paraphrase_gap(store):
 @pytest.mark.redis
 async def test_forget_url_cascades_both_tiers(store):
     await store.upsert_chunks([CHUNK])
-    await store.put_qa("What is Redis?", "A data store.", ["https://redis.io/docs"], "technology", "static")
+    await store.put_qa(
+        "What is Redis?", "A data store.", ["https://redis.io/docs"], "technology", "static"
+    )
     await store.mark_url_ingested("https://redis.io/docs", ttl_days=7)
     deleted = await store.forget_url("https://redis.io/docs/")  # trailing slash normalizes away
     assert deleted >= 3

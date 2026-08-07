@@ -51,7 +51,9 @@ class SearchClient:
         self._settings = settings
         self._tavily = tavily or AsyncTavilyClient(api_key=settings.tavily_api_key)
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=0.5, max=4), reraise=True)
+    @retry(
+        stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=0.5, max=4), reraise=True
+    )
     async def search(self, query: str) -> list[SearchResult]:
         response = await asyncio.wait_for(
             self._tavily.search(query, max_results=self._settings.top_k, search_depth="basic"),
@@ -92,7 +94,9 @@ class ContentFetcher:
         results = response.get("results", [])
         if not results or not results[0].get("raw_content"):
             return None
-        return PageContent(url=url, title=results[0].get("title", ""), markdown=results[0]["raw_content"])
+        return PageContent(
+            url=url, title=results[0].get("title", ""), markdown=results[0]["raw_content"]
+        )
 
     async def fetch(self, url: str) -> PageContent | None:
         try:

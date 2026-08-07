@@ -49,9 +49,7 @@ class AzureEmbedder:
             input=texts,
             timeout=10.0,
         )
-        self.usages.append(
-            Usage(self._settings.embed_deployment, r.usage.prompt_tokens, 0)
-        )
+        self.usages.append(Usage(self._settings.embed_deployment, r.usage.prompt_tokens, 0))
         return [d.embedding for d in r.data]
 
 

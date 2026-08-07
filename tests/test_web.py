@@ -27,7 +27,11 @@ class FakeTavily:
         self.extract_calls.extend(urls)
         if self._extract_content is None:
             return {"results": []}
-        return {"results": [{"url": urls[0], "title": "Extracted", "raw_content": self._extract_content}]}
+        return {
+            "results": [
+                {"url": urls[0], "title": "Extracted", "raw_content": self._extract_content}
+            ]
+        }
 
 
 def test_strip_structural_removes_hidden_carriers():

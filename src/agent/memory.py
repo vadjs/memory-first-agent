@@ -190,7 +190,9 @@ class MemoryStore:
         """Store chunks idempotently. Quarantined chunks are stored without a
         vector: present for audit, invisible to retrieval (spec §5.5)."""
         clean = [c for c in chunks if not c.get("quarantined")]
-        vectors = await self.embedder.embed([normalize_text(c["text"]) for c in clean]) if clean else []
+        vectors = (
+            await self.embedder.embed([normalize_text(c["text"]) for c in clean]) if clean else []
+        )
         vec_by_id = {id(c): v for c, v in zip(clean, vectors, strict=True)}
         now = time.time()
         pipe = self.r.pipeline(transaction=False)
