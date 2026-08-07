@@ -7,7 +7,9 @@ from redis.asyncio import Redis
 
 
 class SessionStore:
-    def __init__(self, redis: Redis, namespace: str = "mfa", max_turns: int = 10, ttl_s: int = 3600):
+    def __init__(
+        self, redis: Redis, namespace: str = "mfa", max_turns: int = 10, ttl_s: int = 3600
+    ):
         self.r = redis
         self.prefix = f"{namespace}:session:"
         self.max_messages = max_turns * 2  # a turn is a user + assistant pair
