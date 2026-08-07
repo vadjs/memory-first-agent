@@ -18,6 +18,19 @@ from agent.telemetry import Usage
 
 _URL = re.compile(r"https?://[^\s)\]>\"']+")
 
+# Layer 1a: deterministic screen for canonical injection markers — zero latency,
+# zero cost, and not dependent on classifier quality. The LLM screen is layer 1b.
+_INJECTION_PATTERNS = re.compile(
+    r"(ignore\s+(all\s+)?(previous|prior|above)\s+instructions"
+    r"|disregard\s+(all\s+)?(previous|prior|your)\s+instructions"
+    r"|reveal\s+(your\s+)?(hidden\s+|system\s+)?(prompt|instructions)"
+    r"|(system|developer)\s+prompt"
+    r"|you\s+are\s+now\s+(?!answering|looking)"
+    r"|developer\s+mode"
+    r"|\bDAN\b\s+mode)",
+    re.IGNORECASE,
+)
+
 
 class SupportsJson(Protocol):
     async def complete_json(
@@ -59,6 +72,14 @@ def _safe_default(query: str) -> Preflight:
 
 
 async def preflight(query: str, history: list[dict], llm: SupportsJson) -> Preflight:
+    if _INJECTION_PATTERNS.search(query):
+        return Preflight(
+            is_injection=True,
+            temporal="volatile",
+            topic="other",
+            contains_pii=False,
+            standalone_query=query,
+        )
     try:
         out, usage = await llm.complete_json(
             PREFLIGHT_SYSTEM, build_preflight_user(query, history), PreflightOut

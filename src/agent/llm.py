@@ -22,7 +22,13 @@ from agent.embeddings import _client_for
 from agent.prompts import SYNTHESIS_SYSTEM
 from agent.telemetry import Usage
 
-_TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, InternalServerError, TimeoutError)
+_TRANSIENT = (
+    RateLimitError,
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    TimeoutError,
+)
 
 _retry_transient = retry(
     stop=stop_after_attempt(3),
@@ -62,10 +68,11 @@ class ConversationLLM:
                 api_key=settings.azure_openai_api_key,
                 base_url=base_url,
             )
+        # OpenAIChatClient speaks the Responses API: reasoning effort is nested there.
         self._agent = Agent(
             client=client,
             instructions=SYNTHESIS_SYSTEM,
-            default_options={"reasoning_effort": "none"},
+            default_options={"reasoning": {"effort": "none"}},
         )
 
     @_retry_transient

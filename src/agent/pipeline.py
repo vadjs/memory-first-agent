@@ -3,6 +3,7 @@
 Plain-async control flow over framework-independent components; the routing
 logic *is* the architecture, so it lives here and nowhere else."""
 
+import asyncio
 import time
 import uuid
 from dataclasses import dataclass
@@ -192,9 +193,11 @@ class Pipeline:
         now = time.time()
         context: list[ChunkHit] = []
         to_store: list[dict] = []
-        for page in pages:
-            page_chunks = chunk_markdown(strip_structural(page.markdown))
-            screened, screen_usage = await screen_chunks(page_chunks, self.util)
+        per_page_chunks = [chunk_markdown(strip_structural(p.markdown)) for p in pages]
+        screen_results = await asyncio.gather(
+            *(screen_chunks(chunks, self.util) for chunks in per_page_chunks)
+        )
+        for page, (screened, screen_usage) in zip(pages, screen_results, strict=True):
             if screen_usage:
                 usages.append(screen_usage)
             for chunk, quarantined in screened:
