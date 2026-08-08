@@ -30,5 +30,10 @@ jobs:
           --client-id "$AZURE_CLIENT_ID"
           --federated-credential-provider "github"
           --tenant-id "$AZURE_TENANT_ID"
+      - name: Provision (idempotent)
+        run: azd provision --no-prompt
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
       - name: Deploy
         run: azd deploy --no-prompt
