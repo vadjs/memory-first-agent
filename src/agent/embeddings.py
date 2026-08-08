@@ -20,7 +20,8 @@ class Embedder(Protocol):
 def _client_for(settings: Settings) -> AsyncOpenAI:
     base_url = f"{settings.azure_openai_endpoint.rstrip('/')}/openai/v1/"
     if settings.use_managed_identity:
-        from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+        # AsyncOpenAI awaits a callable api_key — the provider must be the aio variant.
+        from azure.identity.aio import DefaultAzureCredential, get_bearer_token_provider
 
         provider = get_bearer_token_provider(
             DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"

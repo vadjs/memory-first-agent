@@ -1,0 +1,16 @@
+.env
+.venv/
+.git/
+.desc/
+.claude/
+.agents/
+docs/
+tests/
+evals/
+logs/
+infra/
+scripts/
+*.md
+.github/
+.pytest_cache/
+.ruff_cache/

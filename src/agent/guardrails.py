@@ -14,7 +14,7 @@ from agent.prompts import (
     build_preflight_user,
     build_screen_user,
 )
-from agent.telemetry import Usage
+from agent.telemetry import Usage, log
 
 _URL = re.compile(r"https?://[^\s)\]>\"']+")
 
@@ -93,7 +93,8 @@ async def preflight(query: str, history: list[dict], llm: SupportsJson) -> Prefl
             standalone_query=out.standalone_query.strip() or query,
             usage=usage,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("preflight_failed", error=repr(e))
         return _safe_default(query)
 
 
@@ -109,7 +110,8 @@ async def screen_chunks(
             SCREEN_SYSTEM, build_screen_user([c.text for c in chunks]), ScreenOut
         )
         verdicts = out.verdicts
-    except Exception:
+    except Exception as e:
+        log.warning("ingest_screen_failed", error=repr(e))
         return [(c, True) for c in chunks], None
     result = []
     for i, chunk in enumerate(chunks):
