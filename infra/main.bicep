@@ -37,3 +37,4 @@ module resources 'resources.bicep' = {
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.acrEndpoint
 output SERVICE_AGENT_URI string = resources.outputs.appUri
 output AZURE_OPENAI_ENDPOINT string = resources.outputs.openaiEndpoint
+output FOUNDRY_PROJECT_ENDPOINT string = resources.outputs.foundryProjectEndpoint

@@ -84,6 +84,22 @@ math), the citation-subset invariant, and the red-team scenario that defines thi
 architecture: a poisoned web page whose injected section is quarantined at ingest and
 never surfaces in later memory-served answers.
 
+## Deployment target: Foundry Hosted Agent (this branch)
+
+This branch adds a **second deployment target**: the identical pipeline served as a
+[Foundry Hosted Agent](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/hosted-agents) —
+code-first source upload with remote build (no Dockerfile), per-session sandbox
+isolation, an Entra Agent ID, and Foundry's fleet-scale agent operations, visible and
+testable in the [ai.azure.com](https://ai.azure.com) portal playground. The adapter is
+~150 lines ([`agent/hosted.py`](src/agent/hosted.py) + [`foundry/main.py`](foundry/main.py));
+memory remains the shared Azure Managed Redis, so answers cached through one deployment
+target are hits for the other. Trade-offs and rationale: [ADR-0009](docs/adr/0009-foundry-hosted-variant.md).
+
+```bash
+export FOUNDRY_PROJECT_ENDPOINT=…   # from azd env get-values
+uv run python scripts/deploy_hosted_agent.py
+```
+
 ## Cloud deployment
 
 The same code deploys to Azure as a production reference environment (Container Apps +

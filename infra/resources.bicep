@@ -39,7 +39,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 // ------------------------------------------------------------------ models ---
-resource foundry 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
+resource foundry 'Microsoft.CognitiveServices/accounts@2026-07-01' = {
   name: 'ai-${token}'
   location: location
   kind: 'AIServices'
@@ -49,10 +49,11 @@ resource foundry 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   properties: {
     customSubDomainName: 'ai-${token}'
     publicNetworkAccess: 'Enabled'
+    allowProjectManagement: true // Foundry projects (portal presence + hosted agents)
   }
 }
 
-resource luna 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+resource luna 'Microsoft.CognitiveServices/accounts/deployments@2026-07-01' = {
   parent: foundry
   name: 'gpt-5.6-luna'
   sku: { name: 'GlobalStandard', capacity: 30 }
@@ -61,7 +62,7 @@ resource luna 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
   }
 }
 
-resource nano 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+resource nano 'Microsoft.CognitiveServices/accounts/deployments@2026-07-01' = {
   parent: foundry
   name: 'gpt-5-nano'
   sku: { name: 'GlobalStandard', capacity: 30 }
@@ -71,7 +72,7 @@ resource nano 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
   dependsOn: [luna]
 }
 
-resource embed 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+resource embed 'Microsoft.CognitiveServices/accounts/deployments@2026-07-01' = {
   parent: foundry
   name: 'text-embedding-3-small'
   sku: { name: 'GlobalStandard', capacity: 60 }
@@ -79,6 +80,18 @@ resource embed 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
     model: { format: 'OpenAI', name: 'text-embedding-3-small', version: '1' }
   }
   dependsOn: [nano]
+}
+
+resource project 'Microsoft.CognitiveServices/accounts/projects@2026-07-01' = {
+  parent: foundry
+  name: 'memory-first'
+  location: location
+  identity: { type: 'SystemAssigned' }
+  tags: tags
+  properties: {
+    displayName: 'memory-first-agent'
+    description: 'Memory-first web agent: model deployments and the Foundry-hosted agent variant'
+  }
 }
 
 // ------------------------------------------------------------------ memory ---
@@ -269,3 +282,4 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
 output acrEndpoint string = acr.properties.loginServer
 output appUri string = 'https://${app.properties.configuration.ingress.fqdn}'
 output openaiEndpoint string = foundry.properties.endpoint
+output foundryProjectEndpoint string = 'https://${foundry.name}.services.ai.azure.com/api/projects/${project.name}'

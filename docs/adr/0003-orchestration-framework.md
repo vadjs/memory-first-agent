@@ -11,9 +11,12 @@ typed `chat.completions.parse`, because the guardrails depend on schema-enforced
 
 - **LangGraph** — mature graph orchestration, but adds a second framework vocabulary for
   a graph that is a straight line with one branch; rejected as accidental complexity here.
-- **Foundry Agent Service (hosted agents)** — moves orchestration, state, and tools into
-  Azure; rejected because the assignment's core (custom Redis memory routing) is exactly
-  what the hosted runtime abstracts away.
+- **Foundry Agent Service (hosted agents)** — since Build 2026 the hosted runtime is
+  code-first too (bring your own container or source, any framework), so it does *not*
+  take the orchestration away; the remaining trade-offs are protocol shape (Responses
+  surface vs our custom API), per-session state philosophy vs our shared memory, and
+  preview maturity. Not rejected — implemented as a second deployment target in
+  ADR-0009; Container Apps remains primary for the custom HTTP contract and GA runtime.
 - **Agent Framework Workflows** — the framework's own graph layer; unnecessary for one
   linear flow, and keeping components framework-independent preserved testability
   (91 tests run without any framework import in the routing path).
