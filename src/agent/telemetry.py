@@ -73,10 +73,15 @@ def _log_dir() -> Path:
 def log_turn(rec: TurnRecord) -> None:
     payload = asdict(rec)
     log.info("turn", **payload)
-    directory = _log_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    with (directory / "turns.jsonl").open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    # The file sink is best-effort: sandboxed runtimes (e.g. Foundry Hosted Agents)
+    # mount a read-only filesystem, where stdout JSON is the canonical sink instead.
+    try:
+        directory = _log_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        with (directory / "turns.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except OSError as e:
+        log.warning("turn_log_file_unavailable", error=str(e))
 
 
 def read_turns() -> list[dict]:
