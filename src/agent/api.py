@@ -97,4 +97,15 @@ def _default_app() -> FastAPI:
     )
 
 
-app = _default_app()
+_app_instance: FastAPI | None = None
+
+
+def __getattr__(name: str) -> FastAPI:
+    """Build the default app lazily (PEP 562): `uvicorn agent.api:app` constructs it at
+    server start; merely importing this module (tests, CI) never touches credentials."""
+    if name == "app":
+        global _app_instance
+        if _app_instance is None:
+            _app_instance = _default_app()
+        return _app_instance
+    raise AttributeError(name)

@@ -47,12 +47,13 @@ def _kmeans(vectors: list[list[float]], k: int, iters: int = 20) -> list[int]:
     for _ in range(iters):
         for i, v in enumerate(vectors):
             labels[i] = min(
-                range(k), key=lambda c: sum((a - b) ** 2 for a, b in zip(v, centroids[c]))
+                range(k),
+                key=lambda c: sum((a - b) ** 2 for a, b in zip(v, centroids[c], strict=True)),
             )
         for c in range(k):
             members = [vectors[i] for i in range(len(vectors)) if labels[i] == c]
             if members:
-                centroids[c] = [sum(dim) / len(members) for dim in zip(*members)]
+                centroids[c] = [sum(dim) / len(members) for dim in zip(*members, strict=True)]
     return labels
 
 
@@ -81,7 +82,7 @@ async def cluster_questions(memory, util) -> list[dict]:
 
     clusters = []
     for c in range(k):
-        members = [q for q, label in zip(questions, labels) if label == c]
+        members = [q for q, label in zip(questions, labels, strict=True) if label == c]
         if not members:
             continue
         try:
