@@ -45,3 +45,24 @@ def test_log_turn_roundtrip(tmp_path, monkeypatch):
     # file is valid JSONL
     raw = (tmp_path / "turns.jsonl").read_text().strip()
     assert json.loads(raw)["turn_id"] == "t-1"
+
+
+def test_log_turn_survives_readonly_filesystem(monkeypatch, capsys):
+    # A file inside a *file* path can never be created — simulates a read-only sandbox.
+    monkeypatch.setenv("AGENT_LOG_DIR", "/dev/null/logs")
+    rec = TurnRecord(
+        turn_id="t-ro",
+        query="q",
+        route="hit_cache",
+        topic="technology",
+        temporal="static",
+        injection_flagged=False,
+        contains_pii=False,
+        scores={},
+        stages=[],
+        usages=[],
+        total_cost_usd=0.0,
+        cited_urls=[],
+    )
+    log_turn(rec)  # must not raise; stdout record still emitted
+    assert "t-ro" in capsys.readouterr().out
