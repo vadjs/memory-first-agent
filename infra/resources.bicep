@@ -169,6 +169,10 @@ var roleKvSecretsUser = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '4633458b-17de-408a-b874-0445c86b69e6'
 )
+var roleFoundryProjectManager = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  'eadc314b-1a2d-4efa-be10-5d325db5065e'
+)
 var roleReader = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   'acdd72a7-3385-48ef-bd42-f606fba81ae7'
@@ -184,6 +188,18 @@ resource deployerKvSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' 
   properties: {
     principalId: deployPrincipalId
     roleDefinitionId: roleKvSecretsUser
+  }
+}
+
+// Hosted-agent versions are created through the Foundry data plane; Contributor
+// alone cannot — the deploying principal needs Foundry Project Manager (docs:
+// "deploy a hosted agent" required permissions).
+resource deployerProjectManager 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployPrincipalId != '') {
+  scope: foundry
+  name: guid(foundry.id, deployPrincipalId, roleFoundryProjectManager)
+  properties: {
+    principalId: deployPrincipalId
+    roleDefinitionId: roleFoundryProjectManager
   }
 }
 
