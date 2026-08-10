@@ -43,9 +43,8 @@ The same curve governs **capacity**: token demand against Azure OpenAI quota sca
 | Resource | Monthly |
 |---|---|
 | Azure Managed Redis Balanced B0 | ~$16 |
-| Container Apps (consumption, scale-to-zero) | ~$0 idle; cents/day active |
+| Foundry Agent Service hosted agent (per-session CPU+memory, idle sessions deprovision after 15 min) | ~$0 idle; cents/day active |
 | Log Analytics / App Insights (30-day retention, low volume) | ~$1–3 |
-| ACR Basic | ~$5 |
 | Model deployments (Global Standard) | $0 idle — per-token only |
 
 ## KPIs to run this by

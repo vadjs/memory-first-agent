@@ -12,8 +12,8 @@ param location string
 @secure()
 param tavilyApiKey string = ''
 
-@secure()
-param apiKey string = ''
+@description('Deploying principal (CI service principal or local azd user); granted Key Vault read for agent secrets')
+param principalId string = ''
 
 var tags = { 'azd-env-name': environmentName }
 
@@ -30,11 +30,11 @@ module resources 'resources.bicep' = {
     location: location
     tags: tags
     tavilyApiKey: tavilyApiKey
-    apiKey: apiKey
+    deployPrincipalId: principalId
   }
 }
 
-output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.acrEndpoint
-output SERVICE_AGENT_URI string = resources.outputs.appUri
 output AZURE_OPENAI_ENDPOINT string = resources.outputs.openaiEndpoint
 output FOUNDRY_PROJECT_ENDPOINT string = resources.outputs.foundryProjectEndpoint
+output AZURE_KEY_VAULT_NAME string = resources.outputs.keyVaultName
+output APPLICATIONINSIGHTS_CONNECTION_STRING string = resources.outputs.appInsightsConnectionString

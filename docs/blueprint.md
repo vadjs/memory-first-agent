@@ -30,8 +30,8 @@ flowchart LR
     end
     subgraph Azure["Azure (swedencentral)"]
         APIM[API Management\nGenAI gateway: Entra ID auth,\nrate & token limits, streaming]
-        subgraph ACA[Container Apps environment]
-            APP["Agent API\n(FastAPI, scale 0..N)"]
+        subgraph FAS[Foundry Agent Service]
+            APP["Hosted agent\n(per-session sandboxes,\nEntra Agent ID, scale 0..N)"]
         end
         REDIS[(Azure Managed Redis\nvector search, TLS)]
         AI[Azure AI Foundry\ngpt-5.6-luna · gpt-5-nano · embeddings]
@@ -54,12 +54,12 @@ Deltas from the implemented POC, in adoption order:
 
 | Concern | POC (implemented) | Production |
 |---|---|---|
-| AuthN/AuthZ | Static bearer key | Entra ID via APIM or Container Apps Easy Auth |
+| AuthN/AuthZ | Entra bearer on the platform agent endpoint | Same, plus APIM in front for external consumers (per-consumer quotas, OBO flows via Entra Agent ID) |
 | Injection screening | nano classifier + deterministic patterns | Same, plus **Prompt Shields** at input and ingest — a managed, adversarially-maintained model |
 | Gateway | none (direct ingress) | APIM GenAI gateway: token-rate policies, model failover, per-consumer quotas, response streaming |
-| Network | public endpoints, TLS | Private endpoints + VNet-injected environment |
+| Network | public endpoints, TLS | Private endpoints + BYO virtual network for the agent runtime |
 | Evaluation | CI evals + manual live groundedness | Foundry evaluations wired to nightly runs and release gates |
-| Scale | 0–2 replicas, one region | N replicas; Redis tier grows vertically; HNSW past ~50–100K chunks; single-flight collapsing |
+| Scale | per-session sandboxes (platform-scaled), one region | Same scaling model at higher quotas; Redis tier grows vertically; HNSW past ~50–100K chunks; single-flight collapsing |
 
 Everything else — the routing logic, thresholds, guardrail layers, telemetry schema,
 erasure verbs — ships unchanged: it is application code with no Azure dependency.
@@ -74,7 +74,7 @@ standard Redis commands; only configuration binds them to Azure.
 | Chat + utility models | Azure OpenAI (Foundry) | Bedrock | Vertex AI | Endpoint config; the agent-framework client abstracts the rest |
 | Embeddings | Azure OpenAI | Bedrock Titan/Cohere | Vertex embeddings | Config + **threshold recalibration** (ADR-0004 — thresholds are model artifacts) |
 | Vector memory | Azure Managed Redis | ElastiCache (Redis OSS 8) / MemoryDB | Memorystore Redis Cluster | None — Redis commands are the interface |
-| Compute | Container Apps | App Runner / ECS Fargate | Cloud Run | Dockerfile is the interface |
+| Compute | Foundry Agent Service (hosted agent) | Bedrock AgentCore Runtime | Vertex AI Agent Engine | Hosting adapter (~150 lines); the pipeline itself is plain Python, and a Dockerfile path stays open for any container runtime |
 | Secrets/identity | Key Vault + managed identity | Secrets Manager + IAM roles | Secret Manager + workload identity | IaC only |
 | IaC | Bicep + azd | Terraform | Terraform | Rewrite (the one deliberate lock-in, ADR-0007) |
 | Search + extraction | Tavily | Tavily | Tavily | None — cloud-neutral vendor |

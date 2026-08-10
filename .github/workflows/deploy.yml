@@ -24,16 +24,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Azure/setup-azd@v2
-      - name: Log in with Azure (federated credentials)
+      - name: Install Foundry agent extension
+        run: azd ext install azure.ai.agents # runner images don't bundle it
+      - name: Log in with azd (federated credentials)
         run: >
           azd auth login
           --client-id "$AZURE_CLIENT_ID"
           --federated-credential-provider "github"
           --tenant-id "$AZURE_TENANT_ID"
+      - name: Log in with az (Key Vault reads)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Provision (idempotent)
         run: azd provision --no-prompt
         env:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
-          API_KEY: ${{ secrets.API_KEY }}
-      - name: Deploy
+      - name: Load agent secrets from Key Vault into azd env
+        # Key Vault is the secret source of truth (ADR-0009): Bicep writes the
+        # generated Redis URL, model key, and Tavily seed there at provision;
+        # this step feeds them to the ${VAR} references in azure.yaml's env map.
+        run: |
+          kv="$(azd env get-value AZURE_KEY_VAULT_NAME)"
+          for pair in REDIS_URL:redis-url TAVILY_API_KEY:tavily-api-key AZURE_OPENAI_API_KEY:azure-openai-api-key; do
+            var="${pair%%:*}" secret="${pair#*:}"
+            value="$(az keyvault secret show --vault-name "$kv" --name "$secret" --query value -o tsv)"
+            echo "::add-mask::$value"
+            azd env set "$var" "$value"
+          done
+      - name: Deploy hosted agent (zip → remote build → new version)
         run: azd deploy --no-prompt
+      - name: Smoke-invoke the deployed agent
+        run: >
+          azd ai agent invoke memory-first-agent
+          "What is the strangler fig pattern in software architecture?"
+          --no-prompt --output raw

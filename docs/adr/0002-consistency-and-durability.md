@@ -4,6 +4,6 @@ Nothing in the system requires strong consistency or durable memory: chunks are 
 
 ## Consequences
 
-- Single-node Redis is an accepted POC single point of failure: the API fast-fails 503 via `/healthz` rather than hanging; production posture is Managed Redis replication plus ≥2 app replicas.
+- Single-node Redis is an accepted POC single point of failure: the API fast-fails 503 via `/healthz` rather than hanging; production posture is Managed Redis replication (the hosted agent side scales per-session, ADR-0009).
 - There is no backfill or backup-restore problem to solve; "restore" is normal operation.
 - Freshness is enforced at read time (routing), never by deleting data at write time — which is also what makes erasure and staleness independently tunable.

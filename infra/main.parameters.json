@@ -11,8 +11,8 @@
     "tavilyApiKey": {
       "value": "${TAVILY_API_KEY}"
     },
-    "apiKey": {
-      "value": "${API_KEY}"
+    "principalId": {
+      "value": "${AZURE_PRINCIPAL_ID}"
     }
   }
 }

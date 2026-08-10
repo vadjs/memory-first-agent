@@ -84,39 +84,38 @@ math), the citation-subset invariant, and the red-team scenario that defines thi
 architecture: a poisoned web page whose injected section is quarantined at ingest and
 never surfaces in later memory-served answers.
 
-## Deployment target: Foundry Hosted Agent (this branch)
+## Cloud deployment: Foundry Hosted Agent
 
-This branch adds a **second deployment target**: the identical pipeline served as a
-[Foundry Hosted Agent](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/hosted-agents) —
-code-first source upload with remote build (no Dockerfile), per-session sandbox
-isolation, an Entra Agent ID, and Foundry's fleet-scale agent operations, visible and
-testable in the [ai.azure.com](https://ai.azure.com) portal playground. The adapter is
-~150 lines ([`agent/hosted.py`](src/agent/hosted.py) + [`foundry/main.py`](foundry/main.py));
-memory remains the shared Azure Managed Redis, so answers cached through one deployment
-target are hits for the other. Trade-offs and rationale: [ADR-0009](docs/adr/0009-foundry-hosted-variant.md).
+The cloud deployment target is a
+[Foundry Hosted Agent](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/hosted-agents):
+the identical pipeline served code-first — source upload with remote build (no
+Dockerfile), per-session sandbox isolation, an Entra Agent ID, and Foundry's
+fleet-scale agent operations, visible and testable in the
+[ai.azure.com](https://ai.azure.com) portal playground. The adapter is ~150 lines
+([`agent/hosted.py`](src/agent/hosted.py) + [`src/main.py`](src/main.py)); memory is
+Azure Managed Redis. Trade-offs and rationale:
+[ADR-0009](docs/adr/0009-foundry-hosted-variant.md).
+
+Deployment is azd-native: [`azure.yaml`](azure.yaml) declares the Foundry project and
+the agent as azd services over the [`infra/`](infra/) Bicep estate (Managed Redis,
+model deployments, Key Vault, App Insights):
 
 ```bash
-export FOUNDRY_PROJECT_ENDPOINT=…   # from azd env get-values
-uv run python scripts/deploy_hosted_agent.py   # zip → remote build → route → invoke
+azd auth login
+azd ext install azure.ai.agents
+azd up        # provision (Bicep) + deploy (zip → remote build → new agent version)
+
 uv run python scripts/run_foundry_eval.py      # Groundedness+Relevance run → Evaluation tab
+uv run python scripts/run_foundry_eval.py --traces   # judge real traffic from telemetry
 ```
 
-The portal's operational views are wired end-to-end: **Traces** and **Monitor** show the
-agent's OpenTelemetry gen_ai spans (one `invoke_agent` span per turn with model and
-embedding children) through the project's Application Insights connection (IaC-managed),
-and **Evaluation** holds cloud eval runs over the golden set.
-
-## Cloud deployment
-
-The same code deploys to Azure as a production reference environment (Container Apps +
-Azure Managed Redis + Foundry + Key Vault + App Insights, keyless managed-identity auth):
-
-```bash
-azd auth login && azd up
-```
-
-CI runs lint, tests, evals, and Bicep validation on every push; CD deploys `main` via
-OIDC-federated `azd deploy` — no cloud secrets in GitHub. See
+CI runs lint, tests, evals, and Bicep validation on every push; CD (on `main`) is
+OIDC-federated — `azd provision`, agent secrets read from Key Vault, `azd deploy`, and
+a smoke invoke, with no long-lived cloud secrets in GitHub. The portal's operational
+views are wired end-to-end: **Traces** and **Monitor** show the agent's OpenTelemetry
+gen_ai spans (one `invoke_agent` span per turn with model and embedding children)
+through the project's Application Insights connection (IaC-managed), and **Evaluation**
+holds cloud eval runs over the golden set. See
 [`docs/blueprint.md`](docs/blueprint.md) for the production hardening path.
 
 ## Repository map & document index
@@ -128,7 +127,7 @@ OIDC-federated `azd deploy` — no cloud secrets in GitHub. See
 | [`infra/`](infra/) | Bicep for the full Azure environment (azd) |
 | [`CONTEXT.md`](CONTEXT.md) | Ubiquitous language — canonical terms used everywhere |
 | [`docs/SAD.md`](docs/SAD.md) | Architecture views: context, containers, components, sequences, deployment, QA scenarios |
-| [`docs/adr/`](docs/adr/) | Decision records 0001–0008 |
+| [`docs/adr/`](docs/adr/) | Decision records 0001–0009 |
 | [`docs/blueprint.md`](docs/blueprint.md) | Reference architecture: production Azure + multi-cloud portability |
 | [`docs/assessment.md`](docs/assessment.md) | Well-Architected self-assessment + roadmap |
 | [`docs/cost-model.md`](docs/cost-model.md) | Per-turn economics, hit-rate sensitivity, KPIs |

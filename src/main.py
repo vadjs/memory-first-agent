@@ -1,8 +1,10 @@
 """Foundry Hosted Agent entrypoint (ADR-0009).
 
-Foundry's remote build runs this file at the zip root; the `agent` package sits
-alongside it. Configuration arrives exclusively through environment variables set
-on the hosted-agent version — no files, no secrets in code."""
+`azd deploy` packages this directory (`src/`) as the code zip: this file and
+`requirements.txt` at the zip root, the `agent` package alongside, dependencies
+resolved by Foundry's remote build. Configuration arrives exclusively through
+environment variables set on the hosted-agent version — no files, no secrets
+in code."""
 
 import os
 
