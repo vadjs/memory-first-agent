@@ -89,6 +89,9 @@ class PipelineChatClient(FunctionInvocationLayer, BaseChatClient):
 def build_hosted_agent(client: PipelineChatClient) -> Agent:
     return Agent(
         client=client,
+        # Stable id: gen_ai.agent.id in traces must survive redeploys so
+        # trace-based evaluations can target the agent across versions.
+        id="memory-first-agent",
         name="memory-first-agent",
         description=(
             "Answers questions memory-first from a two-tier Redis vector memory, "

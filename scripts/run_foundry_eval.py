@@ -60,6 +60,43 @@ async def gather_items(project_client: AIProjectClient) -> list[EvalItem]:
     return items
 
 
+async def run_dataset_eval(project_client: AIProjectClient) -> None:
+    """Project-level dataset eval: golden questions vs memory context (Evaluations list)."""
+    items = await gather_items(project_client)
+    evals = FoundryEvals(
+        project_client=project_client,
+        model="gpt-5.6-luna",
+        evaluators=[FoundryEvals.GROUNDEDNESS, FoundryEvals.RELEVANCE],
+    )
+    results = evals.evaluate(items, eval_name="memory-first-agent golden set")
+    if inspect.isawaitable(results):
+        results = await results
+    _report(results)
+
+
+async def run_trace_eval(project_client: AIProjectClient, lookback_hours: int) -> None:
+    """Agent-linked eval over the agent's own OTel traces — this is the kind the
+    agent-scoped Evaluation tab lists (data source references the agent id)."""
+    from agent_framework.foundry import evaluate_traces
+
+    results = await evaluate_traces(
+        project_client=project_client,
+        model="gpt-5.6-luna",
+        agent_id=AGENT_NAME,
+        lookback_hours=lookback_hours,
+        eval_name="memory-first-agent live traffic",
+        timeout=600.0,
+    )
+    _report(results)
+
+
+def _report(results) -> None:
+    print(f"status: {results.status}")
+    print(f"result counts: {results.result_counts}")
+    print(f"per evaluator: {results.per_evaluator}")
+    print(f"report: {results.report_url}")
+
+
 async def main() -> None:
     endpoint = os.environ.get("FOUNDRY_PROJECT_ENDPOINT")
     if not endpoint:
@@ -69,19 +106,10 @@ async def main() -> None:
         DefaultAzureCredential() as credential,
         AIProjectClient(endpoint=endpoint, credential=credential) as project_client,
     ):
-        items = await gather_items(project_client)
-        evals = FoundryEvals(
-            project_client=project_client,
-            model="gpt-5.6-luna",
-            evaluators=[FoundryEvals.GROUNDEDNESS, FoundryEvals.RELEVANCE],
-        )
-        results = evals.evaluate(items, eval_name="memory-first-agent golden set")
-        if inspect.isawaitable(results):
-            results = await results
-        print(f"status: {results.status}")
-        print(f"result counts: {results.result_counts}")
-        print(f"per evaluator: {results.per_evaluator}")
-        print(f"report: {results.report_url}")
+        if "--traces" in sys.argv:
+            await run_trace_eval(project_client, lookback_hours=4)
+        else:
+            await run_dataset_eval(project_client)
 
 
 if __name__ == "__main__":
