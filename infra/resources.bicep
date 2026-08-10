@@ -211,5 +211,6 @@ resource projectLogAnalyticsReader 'Microsoft.Authorization/roleAssignments@2022
 
 output openaiEndpoint string = foundry.properties.endpoint
 output foundryProjectEndpoint string = 'https://${foundry.name}.services.ai.azure.com/api/projects/${project.name}'
+output projectId string = project.id
 output keyVaultName string = keyVault.name
 output appInsightsConnectionString string = appInsights.properties.ConnectionString

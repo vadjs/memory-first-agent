@@ -36,5 +36,8 @@ module resources 'resources.bicep' = {
 
 output AZURE_OPENAI_ENDPOINT string = resources.outputs.openaiEndpoint
 output FOUNDRY_PROJECT_ENDPOINT string = resources.outputs.foundryProjectEndpoint
+// The azure.ai.agents extension resolves the deploy target from this ARM id;
+// azd sets it automatically only for synthesized infra, so ejected Bicep must.
+output AZURE_AI_PROJECT_ID string = resources.outputs.projectId
 output AZURE_KEY_VAULT_NAME string = resources.outputs.keyVaultName
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = resources.outputs.appInsightsConnectionString
