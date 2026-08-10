@@ -89,8 +89,8 @@ class PipelineChatClient(FunctionInvocationLayer, BaseChatClient):
 def build_hosted_agent(client: PipelineChatClient) -> Agent:
     return Agent(
         client=client,
-        # Stable id: gen_ai.agent.id in traces must survive redeploys so
-        # trace-based evaluations can target the agent across versions.
+        # Deterministic id for local/self-hosted runs. In Foundry hosting the
+        # platform stamps its own stable agent GUID into gen_ai.agent.id.
         id="memory-first-agent",
         name="memory-first-agent",
         description=(

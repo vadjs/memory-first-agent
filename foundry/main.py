@@ -26,10 +26,16 @@ def create_server() -> ResponsesHostServer:
     # Statsbeat (the exporter's vendor telemetry) probes the IMDS endpoint, which
     # the hosted sandbox blocks — every probe would land as a failed dependency.
     os.environ.setdefault("APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL", "true")
+    # Message content in spans is OTel "sensitive data", off by default. Trace-based
+    # evaluations need it (they judge the recorded conversations), so this reference
+    # environment captures it; set CAPTURE_TRACE_CONTENT=false where data-governance
+    # policy forbids conversation content in telemetry — dataset evals still work.
+    capture_content = os.environ.get("CAPTURE_TRACE_CONTENT", "true").lower() == "true"
     configure_observability(
-        connection_string=os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
+        connection_string=os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING"),
+        enable_sensitive_data=capture_content,
     )
-    enable_instrumentation()
+    enable_instrumentation(enable_sensitive_data=capture_content)
     settings = get_settings()
     memory = MemoryStore(settings.redis_url, AzureEmbedder(settings))
     pipeline = Pipeline(

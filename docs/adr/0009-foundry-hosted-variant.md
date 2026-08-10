@@ -35,6 +35,12 @@ needs no session store of its own.
   the rest of the estate uses — one observability plane, two consoles — while the agent
   exports OpenTelemetry gen_ai spans (`invoke_agent` → model/embedding child spans) via
   `configure_observability` + `enable_instrumentation`. **Evaluation** runs are
-  submitted with `scripts/run_foundry_eval.py` (Groundedness + Relevance over the golden
-  set, results in the portal's Evaluation tab) — the managed counterpart of the local
-  eval suite, fit for scheduled quality fences.
+  submitted with `scripts/run_foundry_eval.py` in two kinds mirroring the offline/online
+  split: project-level **dataset evals** (Groundedness + Relevance over the golden set)
+  and agent-scoped **trace evals** (`--traces`: Foundry judges the agent's real
+  conversations pulled from its own telemetry — the runs the agent's Evaluation tab
+  lists). Trace evals required three wirings, each an honest prerequisite: the platform
+  agent GUID (not the name) as the trace filter; App Insights/Log Analytics read roles
+  for the *project's* managed identity (IaC); and conversation-content capture in spans
+  (`CAPTURE_TRACE_CONTENT`, default on here) — content-in-telemetry is a data-governance
+  decision, so it is a switch, not an assumption.

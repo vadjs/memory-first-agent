@@ -189,6 +189,36 @@ var roleOpenAIUser = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 )
+var roleReader = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  'acdd72a7-3385-48ef-bd42-f606fba81ae7'
+)
+var roleLogAnalyticsReader = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '73c42c96-874c-492b-b04d-ab87d138a893'
+)
+
+// Trace-based evaluations: the Foundry project's managed identity reads the
+// agent's telemetry back from App Insights / Log Analytics (spec: agent-scoped evals).
+resource projectAppInsightsReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: appInsights
+  name: guid(appInsights.id, project.id, roleReader)
+  properties: {
+    principalId: project.identity.principalId
+    roleDefinitionId: roleReader
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource projectLogAnalyticsReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: logAnalytics
+  name: guid(logAnalytics.id, project.id, roleLogAnalyticsReader)
+  properties: {
+    principalId: project.identity.principalId
+    roleDefinitionId: roleLogAnalyticsReader
+    principalType: 'ServicePrincipal'
+  }
+}
 
 resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: acr

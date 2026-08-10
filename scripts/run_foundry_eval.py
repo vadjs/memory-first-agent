@@ -76,13 +76,21 @@ async def run_dataset_eval(project_client: AIProjectClient) -> None:
 
 async def run_trace_eval(project_client: AIProjectClient, lookback_hours: int) -> None:
     """Agent-linked eval over the agent's own OTel traces — this is the kind the
-    agent-scoped Evaluation tab lists (data source references the agent id)."""
+    agent-scoped Evaluation tab lists (data source references the agent id).
+
+    The filter must match `gen_ai.agent.id` as it appears in the traces: for a
+    Foundry-hosted agent that is the platform's internal agent GUID (stable
+    across versions), not the public agent name. Find it once with:
+      dependencies | where name startswith 'invoke_agent'
+                   | distinct tostring(customDimensions['gen_ai.agent.id'])
+    and pass it via FOUNDRY_AGENT_TRACE_ID."""
     from agent_framework.foundry import evaluate_traces
 
+    trace_agent_id = os.environ.get("FOUNDRY_AGENT_TRACE_ID", AGENT_NAME)
     results = await evaluate_traces(
         project_client=project_client,
         model="gpt-5.6-luna",
-        agent_id=AGENT_NAME,
+        agent_id=trace_agent_id,
         lookback_hours=lookback_hours,
         eval_name="memory-first-agent live traffic",
         timeout=600.0,
