@@ -10,8 +10,11 @@ support surface, not performance.
 **Bicep + azd, not Terraform**: the estate is Azure-only, so Azure-native IaC wins —
 no state backend to manage (ARM is the source of truth), day-0 support for the newest
 resource types (Foundry model deployments, Managed Redis), and first-class azd
-integration (`azd up` provisions and deploys; CI validates with `bicep build`; CD ships
-via OIDC-federated `azd deploy` with no long-lived cloud secrets in GitHub).
+integration. `azure.yaml` declares the Foundry project and the hosted agent as azd
+services with an `infra:` block pointing at `infra/` Bicep, so one tool owns both
+halves: `azd provision` runs the Bicep, `azd deploy` (the `azure.ai.agents` extension)
+ships the agent as a code zip with remote build. CI validates with `bicep build`; CD is
+OIDC-federated with no long-lived cloud secrets in GitHub (ADR-0009).
 
 ## Considered Options
 

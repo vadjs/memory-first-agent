@@ -4,17 +4,10 @@ param tags object
 @secure()
 param tavilyApiKey string
 
-@secure()
-param apiKey string
+@description('Principal that reads agent secrets from Key Vault at deploy time (CI service principal or the local azd user). Empty skips the assignment.')
+param deployPrincipalId string = ''
 
 var token = toLower(uniqueString(subscription().id, resourceGroup().id))
-
-// ---------------------------------------------------------------- identity ---
-resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: 'id-agent-${token}'
-  location: location
-  tags: tags
-}
 
 // ------------------------------------------------------------ observability ---
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
@@ -39,7 +32,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 // ------------------------------------------------------------------ models ---
-resource foundry 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
+resource foundry 'Microsoft.CognitiveServices/accounts@2026-07-01' = {
   name: 'ai-${token}'
   location: location
   kind: 'AIServices'
@@ -49,10 +42,11 @@ resource foundry 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   properties: {
     customSubDomainName: 'ai-${token}'
     publicNetworkAccess: 'Enabled'
+    allowProjectManagement: true // Foundry projects (portal presence + hosted agents)
   }
 }
 
-resource luna 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+resource luna 'Microsoft.CognitiveServices/accounts/deployments@2026-07-01' = {
   parent: foundry
   name: 'gpt-5.6-luna'
   sku: { name: 'GlobalStandard', capacity: 30 }
@@ -61,7 +55,7 @@ resource luna 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
   }
 }
 
-resource nano 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+resource nano 'Microsoft.CognitiveServices/accounts/deployments@2026-07-01' = {
   parent: foundry
   name: 'gpt-5-nano'
   sku: { name: 'GlobalStandard', capacity: 30 }
@@ -71,7 +65,7 @@ resource nano 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
   dependsOn: [luna]
 }
 
-resource embed 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+resource embed 'Microsoft.CognitiveServices/accounts/deployments@2026-07-01' = {
   parent: foundry
   name: 'text-embedding-3-small'
   sku: { name: 'GlobalStandard', capacity: 60 }
@@ -79,6 +73,33 @@ resource embed 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
     model: { format: 'OpenAI', name: 'text-embedding-3-small', version: '1' }
   }
   dependsOn: [nano]
+}
+
+resource project 'Microsoft.CognitiveServices/accounts/projects@2026-07-01' = {
+  parent: foundry
+  name: 'memory-first'
+  location: location
+  identity: { type: 'SystemAssigned' }
+  tags: tags
+  properties: {
+    displayName: 'memory-first-agent'
+    description: 'Memory-first web agent: model deployments and the Foundry hosted agent'
+  }
+}
+
+// Feeds the Foundry portal's Traces and Monitor views from the same App Insights
+// the rest of the estate uses — one observability plane, two consoles.
+resource projectAppInsights 'Microsoft.CognitiveServices/accounts/projects/connections@2026-05-01' = {
+  parent: project
+  name: 'app-insights'
+  properties: {
+    category: 'AppInsights'
+    target: appInsights.id
+    authType: 'ApiKey'
+    isSharedToAll: false
+    credentials: { key: appInsights.properties.ConnectionString }
+    metadata: { ApiType: 'Azure', ResourceId: appInsights.id }
+  }
 }
 
 // ------------------------------------------------------------------ memory ---
@@ -110,6 +131,10 @@ resource redisDb 'Microsoft.Cache/redisEnterprise/databases@2025-07-01' = {
 var redisUrl = 'rediss://default:${redisDb.listKeys().primaryKey}@${redis.properties.hostName}:10000'
 
 // ----------------------------------------------------------------- secrets ---
+// Key Vault is the estate's secret store: Bicep writes the generated Redis URL,
+// the model key, and the Tavily seed here; the deploy pipeline reads them back
+// into the hosted-agent version's environment (ADR-0009). Hardening path:
+// runtime resolution by the Entra Agent ID once the identity pre-exists deploy.
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: 'kv${token}'
   location: location
@@ -133,139 +158,58 @@ resource secretTavily 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   properties: { value: tavilyApiKey }
 }
 
-resource secretApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource secretOpenAI 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
-  name: 'api-key'
-  properties: { value: apiKey }
-}
-
-// ---------------------------------------------------------------- registry ---
-resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
-  name: 'acr${token}'
-  location: location
-  tags: tags
-  sku: { name: 'Basic' }
-  properties: { adminUserEnabled: false }
+  name: 'azure-openai-api-key'
+  properties: { value: foundry.listKeys().key1 }
 }
 
 // ------------------------------------------------------------------- RBAC ----
-var roleAcrPull = subscriptionResourceId(
-  'Microsoft.Authorization/roleDefinitions',
-  '7f951dda-4ed3-4680-a7ca-43fe172d538d'
-)
 var roleKvSecretsUser = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '4633458b-17de-408a-b874-0445c86b69e6'
 )
-var roleOpenAIUser = subscriptionResourceId(
+var roleReader = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
-  '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+  'acdd72a7-3385-48ef-bd42-f606fba81ae7'
+)
+var roleLogAnalyticsReader = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '73c42c96-874c-492b-b04d-ab87d138a893'
 )
 
-resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: acr
-  name: guid(acr.id, identity.id, roleAcrPull)
-  properties: {
-    principalId: identity.properties.principalId
-    roleDefinitionId: roleAcrPull
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource kvSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource deployerKvSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployPrincipalId != '') {
   scope: keyVault
-  name: guid(keyVault.id, identity.id, roleKvSecretsUser)
+  name: guid(keyVault.id, deployPrincipalId, roleKvSecretsUser)
   properties: {
-    principalId: identity.properties.principalId
+    principalId: deployPrincipalId
     roleDefinitionId: roleKvSecretsUser
+  }
+}
+
+// Trace-based evaluations: the Foundry project's managed identity reads the
+// agent's telemetry back from App Insights / Log Analytics (spec: agent-scoped evals).
+resource projectAppInsightsReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: appInsights
+  name: guid(appInsights.id, project.id, roleReader)
+  properties: {
+    principalId: project.identity.principalId
+    roleDefinitionId: roleReader
     principalType: 'ServicePrincipal'
   }
 }
 
-resource openaiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: foundry
-  name: guid(foundry.id, identity.id, roleOpenAIUser)
+resource projectLogAnalyticsReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: logAnalytics
+  name: guid(logAnalytics.id, project.id, roleLogAnalyticsReader)
   properties: {
-    principalId: identity.properties.principalId
-    roleDefinitionId: roleOpenAIUser
+    principalId: project.identity.principalId
+    roleDefinitionId: roleLogAnalyticsReader
     principalType: 'ServicePrincipal'
   }
 }
 
-// ------------------------------------------------------------- compute ------
-resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
-  name: 'cae-${token}'
-  location: location
-  tags: tags
-  properties: {
-    appLogsConfiguration: {
-      destination: 'log-analytics'
-      logAnalyticsConfiguration: {
-        customerId: logAnalytics.properties.customerId
-        sharedKey: logAnalytics.listKeys().primarySharedKey
-      }
-    }
-  }
-}
-
-resource app 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'ca-agent-${token}'
-  location: location
-  tags: union(tags, { 'azd-service-name': 'agent' })
-  identity: {
-    type: 'UserAssigned'
-    userAssignedIdentities: { '${identity.id}': {} }
-  }
-  properties: {
-    managedEnvironmentId: containerEnv.id
-    configuration: {
-      ingress: {
-        external: true
-        targetPort: 8000
-        transport: 'auto'
-      }
-      registries: [
-        { server: acr.properties.loginServer, identity: identity.id }
-      ]
-      secrets: [
-        { name: 'redis-url', keyVaultUrl: secretRedis.properties.secretUri, identity: identity.id }
-        {
-          name: 'tavily-api-key'
-          keyVaultUrl: secretTavily.properties.secretUri
-          identity: identity.id
-        }
-        { name: 'api-key', keyVaultUrl: secretApiKey.properties.secretUri, identity: identity.id }
-      ]
-    }
-    template: {
-      containers: [
-        {
-          name: 'agent'
-          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest' // azd replaces on deploy
-          env: [
-            { name: 'AZURE_OPENAI_ENDPOINT', value: foundry.properties.endpoint }
-            { name: 'USE_MANAGED_IDENTITY', value: 'true' }
-            { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
-            { name: 'CHAT_DEPLOYMENT', value: 'gpt-5.6-luna' }
-            { name: 'UTILITY_DEPLOYMENT', value: 'gpt-5-nano' }
-            { name: 'EMBED_DEPLOYMENT', value: 'text-embedding-3-small' }
-            { name: 'REDIS_URL', secretRef: 'redis-url' }
-            { name: 'TAVILY_API_KEY', secretRef: 'tavily-api-key' }
-            { name: 'API_KEY', secretRef: 'api-key' }
-            {
-              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-              value: appInsights.properties.ConnectionString
-            }
-          ]
-          resources: { cpu: json('0.5'), memory: '1Gi' }
-        }
-      ]
-      scale: { minReplicas: 0, maxReplicas: 2 }
-    }
-  }
-  dependsOn: [acrPull, kvSecrets, openaiUser, embed]
-}
-
-output acrEndpoint string = acr.properties.loginServer
-output appUri string = 'https://${app.properties.configuration.ingress.fqdn}'
 output openaiEndpoint string = foundry.properties.endpoint
+output foundryProjectEndpoint string = 'https://${foundry.name}.services.ai.azure.com/api/projects/${project.name}'
+output keyVaultName string = keyVault.name
+output appInsightsConnectionString string = appInsights.properties.ConnectionString

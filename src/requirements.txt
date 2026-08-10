@@ -1,0 +1,13 @@
+agent-framework-core>=1.13,<2
+agent-framework-openai>=1.12,<2
+agent-framework-foundry-hosting>=1.0.0b1
+openai>=2.53
+redis>=7.1
+httpx>=0.28
+trafilatura>=2.2
+tavily-python>=0.7
+structlog>=26.1
+tenacity>=9.1
+pydantic-settings>=2.15
+tiktoken>=0.13
+azure-identity>=1.25

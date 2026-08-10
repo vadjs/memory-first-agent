@@ -15,9 +15,8 @@ typed `chat.completions.parse`, because the guardrails depend on schema-enforced
   code-first too (bring your own container or source, any framework), so it does *not*
   take the orchestration away; the remaining trade-offs are protocol shape (Responses
   surface vs our custom API), per-session state philosophy vs our shared memory, and
-  preview maturity. Implemented as a second deployment target on the `foundry-hosted`
-  branch (ADR-0009 there); Container Apps remains primary for the custom HTTP contract
-  and GA runtime.
+  preview maturity. Not rejected — adopted as the sole cloud deployment target
+  (ADR-0009); the custom HTTP surface remains a local dev/admin tool.
 - **Agent Framework Workflows** — the framework's own graph layer; unnecessary for one
   linear flow, and keeping components framework-independent preserved testability
   (91 tests run without any framework import in the routing path).

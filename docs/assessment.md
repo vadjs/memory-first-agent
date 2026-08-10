@@ -26,15 +26,17 @@ hit rate divides token demand; then quota increase or provisioned throughput.
 ## Security
 
 **In place**: five-layer injection defense verified by red-team evals; quarantine-not-
-rewrite ingestion; citation-subset enforcement; PII gate on shared memory; keyless
-managed-identity auth in-cloud; Key Vault references; bearer auth + rate limit + input
-cap on the API; admin verbs CLI-only; no secrets in repo, image, or CI (OIDC).
+rewrite ingestion; citation-subset enforcement; PII gate on shared memory; per-session
+sandbox isolation + dedicated Entra Agent ID in-cloud (ADR-0009); Key Vault as the
+secret source of truth (deploy-time read, nothing in the repo or code zip); Entra
+bearer on the agent endpoint; admin verbs CLI-only; no long-lived secrets in CI (OIDC).
 
-**Gaps**: static bearer key instead of Entra ID authentication (roadmap: Easy Auth or
-APIM + Entra); public network paths (roadmap: private endpoints + VNet-injected
-Container Apps); no Azure AI Content Safety Prompt Shields yet (blueprint places them at
-layers 1–2); LLM-based screens are probabilistic — the deterministic layers bound, but
-do not eliminate, classifier error.
+**Gaps**: model auth is key-based in the hosted sandbox (roadmap: Entra Agent ID RBAC
+for model access + runtime Key Vault resolution once the identity can pre-exist
+deploy); public network paths (roadmap: private endpoints + BYO virtual network for
+the agent runtime); no Azure AI Content Safety Prompt Shields yet (blueprint places
+them at layers 1–2); LLM-based screens are probabilistic — the deterministic layers
+bound, but do not eliminate, classifier error.
 
 ## Cost Optimization — the strongest pillar
 

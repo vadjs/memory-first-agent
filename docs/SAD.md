@@ -29,7 +29,8 @@ flowchart TB
 
 | Container | Tech | Responsibility |
 |---|---|---|
-| Agent API | FastAPI / uvicorn | Production entrypoint: `/chat`, `/analytics/summary`, `/healthz`; auth, rate limit, sessions |
+| Hosted agent | agent-framework Responses host | Cloud entrypoint (Foundry Agent Service): platform-managed sessions and transport over the same Pipeline (ADR-0009) |
+| Agent API | FastAPI / uvicorn | Local dev/admin HTTP surface: `/chat`, `/analytics/summary`, `/healthz`; auth, rate limit, sessions |
 | CLI | Typer | Local entrypoint + **all** admin verbs (memory stats/cleanup/erasure) |
 | Pipeline | plain-async Python | The memory-first routing (spec §4.2) — the architecture lives here |
 | Memory | Redis 8 (vector) | Two tiers: `qa_cache` (Answer Cache), `chunks` (Knowledge Base) |
@@ -91,11 +92,14 @@ staleness caveat and never cached; with nothing relevant, the agent refuses hone
 ## 5. Deployment view
 
 **Local**: docker-compose (`redis:8` with AOF) + CLI/uvicorn on the host. **Azure**: one
-azd environment — Container Apps (consumption, scale 0–2, user-assigned identity),
-Azure Managed Redis B0 (TLS, RediSearch), Foundry account with three model deployments,
-Key Vault (all secrets, referenced not copied), App Insights + Log Analytics, ACR.
-Keyless model auth via managed identity. CI/CD: GitHub Actions — CI (lint, tests, evals,
-`bicep build`) on every push; CD (`azd deploy`) on main via OIDC federation.
+azd environment — a Foundry Hosted Agent (per-session VM-isolated sandboxes, Entra
+Agent ID, code zip with remote build, ADR-0009), Azure Managed Redis B0 (TLS,
+RediSearch), Foundry account + project with three model deployments, Key Vault (secret
+source of truth, read at deploy time into the agent version's env), App Insights + Log
+Analytics wired to the Foundry portal's Traces/Monitor/Evaluation views. CI/CD: GitHub
+Actions — CI (lint, tests, evals, `bicep build`) on every push; CD on main via OIDC
+federation: `azd provision` → Key Vault → `azd deploy` (azure.ai.agents extension) →
+smoke invoke.
 
 ## 6. Quality-attribute scenarios
 

@@ -40,11 +40,14 @@ poison does not surface in subsequent memory-served turns.
 
 ## Platform security (production reference)
 
-Keyless in-cloud auth: the container's user-assigned managed identity holds
-`Cognitive Services OpenAI User`; Tavily and API keys live in Key Vault, referenced —
-never copied — into app configuration; ACR pulls via identity; TLS everywhere
-(Managed Redis on 10000/TLS). No secret exists in the repo, the image, or GitHub
-(CD authenticates via OIDC federation).
+The agent runs in per-session VM-isolated sandboxes with a dedicated Entra Agent ID
+(ADR-0009). Key Vault is the secret source of truth — the generated Redis URL, the
+model key, and the Tavily key are written there by IaC and read back only at deploy
+time into the agent version's environment; TLS everywhere (Managed Redis on
+10000/TLS). No secret exists in the repo or the code zip, and GitHub holds only the
+Tavily seed (CD authenticates via OIDC federation). Hardening path: runtime Key Vault
+resolution and Entra-based model auth via the Agent ID once its RBAC can pre-exist
+deploy.
 
 ## GDPR
 

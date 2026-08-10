@@ -33,6 +33,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "azure-ai-projects>=2.3.0",
     "fakeredis>=2.37.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
