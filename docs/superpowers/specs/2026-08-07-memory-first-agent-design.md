@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | Draft for review |
-| **Date** | 2026-08-07 |
+| **Status** | Implemented — maintained as the living design document |
+| **Date** | 2026-08-07 (last updated 2026-08-10: ADR-0009 hosted target, ADR-0011 Page Summaries, Route/Temporal enums) |
 | **Author** | Vadim Zhamkov |
 | **Process** | Spec-first, AI-assisted workflow (see `docs/ai-assistance.md`) |
 
@@ -70,8 +70,10 @@ flowchart TB
         SEARCH[Tavily Search]
         FETCH[Async page fetch]
         MD[Markdown conversion]
+        CHUNK[Heading-aware chunking]
         SCREEN[Ingest guardrail screen]
-        CHUNK[Chunk + embed + upsert]
+        SUM["Page Summaries (ADR-0011)"]
+        UPS[Embed + upsert]
     end
     LLM1[Conversation LLM]
     LLM2[Utility LLM]
@@ -82,10 +84,11 @@ flowchart TB
     PRE --> ROUTE
     ROUTE -->|cache hit| QA --> VAL
     ROUTE -->|chunk hit| CH --> SYN
-    ROUTE -->|miss| SEARCH --> FETCH --> MD --> SCREEN --> CHUNK --> SYN
+    ROUTE -->|miss| SEARCH --> FETCH --> MD --> CHUNK --> SCREEN --> SUM --> UPS --> SYN
     SYN --> VAL --> CLI
     PRE -.-> LLM2
     SCREEN -.-> LLM2
+    SUM -.-> LLM2
     SYN -.-> LLM1
     ROUTE -.-> EMB
 ```
@@ -95,9 +98,9 @@ flowchart TB
 1. **Preflight** (one utility-LLM call): injection screen on user input, temporal-intent class (`static` / `slow` / `volatile`), topic tag (fixed taxonomy + `other`), **PII flag** (`contains_pii`, §5.5), standalone query rewrite using conversation history.
 2. **Route** — embed the standalone query, then:
    - `volatile` query → skip memory read, go to web (results still ingested).
-   - **Tier 1 — semantic answer cache**: search `qa_cache` (question↔question, symmetric). Similarity ≥ `CACHE_THRESHOLD` (0.85) and fresh per §5.3 → return stored answer + sources. Log `HIT/cache`.
-   - **Tier 2 — chunk memory**: search `chunks` (question↔chunk, asymmetric). Top-1 ≥ `CHUNK_THRESHOLD` (0.70, the task default) and fresh → synthesize from top-k (k=5) chunks. Log `HIT/chunks`.
-   - **Miss** → web pipeline: Tavily search (top 5) → fetch pages concurrently → markdown → ingest screen → chunk/embed/upsert → synthesize from fresh chunks **plus** any borderline memory chunks (similarity 0.55–0.70). Log `MISS/web`.
+   - **Tier 1 — semantic answer cache**: search `qa_cache` (question↔question, symmetric). Similarity ≥ `CACHE_THRESHOLD` (0.85) and fresh per §5.3 → return stored answer + sources. Log `hit_cache`.
+   - **Tier 2 — chunk memory**: search `chunks` (question↔chunk, asymmetric). Top-1 ≥ `CHUNK_THRESHOLD` (0.70, the task default) and fresh → synthesize from top-k (k=5) chunks. Log `hit_chunks`.
+   - **Miss** → web pipeline: Tavily search (top 5) → fetch pages concurrently → markdown → chunk → ingest screen → **Page Summary** per page from clean chunks only (utility LLM, ADR-0011) → embed/upsert chunks + summaries → synthesize from summaries and fresh chunks **plus** any borderline memory chunks (similarity 0.55–0.70). Log `miss_web`.
 
    **Promotion invariant**: every validated, fully grounded synthesis — chunk-tier or web-path — is written to the Answer Cache with its source URLs and timestamps, *unless* the turn is `volatile`, `degraded`, `refused`, or PII-flagged (§5.5, ADR-0001).
 3. **Synthesize** (conversation LLM): answer strictly from provided context; retrieved content is wrapped as delimited untrusted data; every claim must be attributable; sources listed.
@@ -118,7 +121,7 @@ Question↔question matching (Tier 1) is symmetric: paraphrases of the same ques
 ### 5.2 Indexes (Redis 8, RediSearch, FLAT, cosine, 1536 dims)
 
 - `qa_cache`: question text + embedding → answer, source URLs, `topic`, `temporal_class`, `created_at`, `hit_count`, `last_hit_at`.
-- `chunks`: chunk text + embedding → source URL, title, section, `content_sha256`, `fetched_at`, `ingest_flags` (guardrail verdicts), `hit_count`, `last_hit_at`.
+- `chunks`: chunk text + embedding → source URL, title, section, `content_sha256`, `fetched_at`, `ingest_flags` (guardrail verdicts), `hit_count`, `last_hit_at`. Page Summaries (ADR-0011) live in the same index with `section = "[page summary]"` and the page's provenance — a page-level retrieval target alongside the local chunks.
 
 **FLAT, not HNSW**: at POC scale (≤ tens of thousands of vectors) exact search is faster in practice, has perfect recall, and zero build cost; the switch point (~50–100K vectors) and HNSW parameters are documented in ADR-0006.
 
@@ -179,13 +182,14 @@ The search API — not the LLM — dominates miss-path cost by ~4–8×, which s
 - Tavily **Map/Crawl** are deliberately not used: they serve whole-site ingestion (corpus seeding), not per-question acquisition.
 - **Chunking**: heading-aware markdown splitting, target ~800 tokens, ~15% overlap; section title kept in metadata.
 - **Ingest screen**: §8, layer 2.
+- **Page Summaries** (ADR-0011): after the screen, the utility model condenses each page's clean chunks into a ≤120-word digest, stored in the Knowledge Base with the page's provenance and placed first in that page's synthesis context. Screening-then-summarizing is the ordering that keeps §8's classify-never-rewrite intact; a summary carrying injection markers is dropped, never repaired. A failed summary degrades to "no summary" and never fails the turn.
 
 ## 8. Security Design (prompt injection)
 
 Threat model (details in `docs/security.md`): the highest-risk vector is **indirect** injection — instructions embedded in fetched web pages that would otherwise persist in memory and re-serve themselves ("memory poisoning"). Defense-in-depth; no single layer is trusted:
 
 1. **Input screen** (preflight, utility LLM): direct-injection classification of user input.
-2. **Ingest screen** (web path): structural stripping first (markdown conversion drops scripts; zero-width chars, HTML comments, base64 blobs removed), then the utility LLM **classifies** chunks for instruction-like content — classify-and-quarantine, never rewrite-and-trust (a sanitizer that rewrites poisoned text can itself be injected). Flagged chunks are stored quarantined (excluded from retrieval) with verdicts in metadata.
+2. **Ingest screen** (web path): structural stripping first (markdown conversion drops scripts; zero-width chars, HTML comments, base64 blobs removed), then the utility LLM **classifies** chunks for instruction-like content — classify-and-quarantine, never rewrite-and-trust (a sanitizer that rewrites poisoned text can itself be injected). Flagged chunks are stored quarantined (excluded from retrieval) with verdicts in metadata. The one rewriting step, the ingest Page Summary (ADR-0011), runs strictly after this screen on clean chunks only, and its output is dropped — never repaired — if it carries injection markers.
 3. **Prompt architecture**: instruction hierarchy (system > user > data) plus spotlighting — retrieved content is delimited as untrusted data the model must treat as citable material, never as instructions. Hierarchy fine-tuning reduces injection success but does not eliminate it; it is one layer, not the control.
 4. **Output validation**: citations must be a subset of actually-retrieved URLs (blocks fabricated sources); refusal template on guardrail trip.
 5. **Least privilege**: the agent has no side-effecting tools retrieved content could trigger; the blast radius of a successful injection is a bad answer, which layers 4 and the evaluation suite (§11) are designed to catch.
@@ -221,7 +225,7 @@ Degradation: if web search is unavailable on a miss, the agent serves the best b
 
 ## 10. Observability and Analytics
 
-Every turn emits one structured JSON record (stdout + `logs/turns.jsonl`): `turn_id`, route (`HIT/cache` | `HIT/chunks` | `MISS/web`), topic, temporal class, guardrail verdicts, top-k similarity scores, per-stage latencies, token usage and computed cost per model, cited URLs. Implemented with `structlog`; optional Langfuse tracing behind an env flag.
+Every turn emits one structured JSON record (stdout + `logs/turns.jsonl`): `turn_id`, route (`hit_cache` | `hit_chunks` | `miss_web` | `degraded` | `refused` — a `StrEnum` in `agent/domain.py`, as is the temporal class), topic, temporal class, guardrail verdicts, top-k similarity scores, per-stage latencies, token usage and computed cost per model, cited URLs. Implemented with `structlog`; in the hosted deployment the same turns also surface as OpenTelemetry gen_ai spans in Application Insights (Foundry Traces/Monitor).
 
 Analytics (FR-7): **online** — the preflight call tags every turn with a topic (10-class taxonomy + `other`); **offline** — `agent analytics` aggregates hit rate, cost, latency percentiles, and topic/intent distributions from the logs, and can cluster stored query embeddings to surface emergent topics inside `other`.
 
@@ -235,7 +239,7 @@ Offline suite in `evals/`, wired into CI:
 
 1. **Routing tests** (deterministic, mocked embeddings/search): seeded memory, known queries → assert hit/miss decisions, threshold edges, volatile bypass, degradation path.
 2. **Citation validity** (deterministic): answer URLs ⊆ retrieved URLs on every golden-set run.
-3. **Groundedness** (LLM-as-judge, utility model; runs only when a key is present): faithfulness of answers to retrieved context on a ~15-question golden set.
+3. **Groundedness** (LLM-as-judge, utility model; runs only when a key is present): faithfulness of answers to retrieved context on a live golden set.
 4. **Injection red team**: fixture pages and queries with embedded attacks → assert screens flag/quarantine and the answer path stays clean.
 
 Online complement (roadmap): thumbs up/down feedback building a human-reviewed dataset.
@@ -245,21 +249,21 @@ Online complement (roadmap): thumbs up/down feedback building a human-reviewed d
 Two interfaces over the same `Pipeline`:
 
 - **CLI** (local dev/test; Typer + Rich): `agent chat` (REPL), `agent ask "…"` (one-shot), `agent analytics [--cluster]`, `agent memory stats|cleanup|clear|forget --url <URL>` (the `forget` verb implements GDPR erasure, §8.6), `agent serve` (runs the API locally). Each answer shows the route badge (memory hit / web), sources with dates, and per-turn cost at `-v`.
-- **HTTP API** (FastAPI; the production entrypoint in Azure): `POST /chat` `{message, session_id?}` → `{answer, route, sources, turn_id}`; `GET /analytics/summary`; `GET /healthz` (liveness: Redis ping) — protected by a static bearer key (`API_KEY`); full authn (Entra ID) is a blueprint roadmap item. Conversation history per `session_id` is kept in Redis (last 10 turns, 1h TTL); the CLI keeps history in-process.
+- **HTTP API** (FastAPI; the production entrypoint in Azure): `POST /chat` `{message, session_id?}` → `{answer, route, sources, turn_id, session_id}`; `GET /analytics/summary`; `GET /healthz` (liveness: Redis ping) — protected by a static bearer key (`API_KEY`); full authn (Entra ID) is a blueprint roadmap item. Conversation history per `session_id` is kept in Redis (last 10 turns, 1h TTL); the CLI keeps history in-process.
 
 **Abuse controls**: a Redis-backed token bucket per API key (default 30 req/min → 429) and a `MAX_QUERY_CHARS` input cap (default 2000) enforced at both entrypoints — a leaked key must not become a cost or quota incident. Admin verbs (`memory …`, erasure) are deliberately **CLI-only**, never exposed over HTTP: attack-surface minimization.
 
 ## 13. Configuration
 
-`pydantic-settings`, `.env` (never committed; `.env.example` provided): Azure/OpenAI endpoint + key + deployment names, Tavily key, Redis URL, thresholds, TTLs, timeouts, `API_KEY`, `RATE_LIMIT_PER_MIN` (30), `MAX_QUERY_CHARS` (2000), feature flags (`DEGRADED_ANSWERS`, `LANGFUSE_*`). Provider switch = env change only. In Azure, the same settings arrive from Container Apps env + Key Vault references, and Azure OpenAI auth is keyless via managed identity (§14).
+`pydantic-settings`, `.env` (never committed; `.env.example` provided): Azure/OpenAI endpoint + key + deployment names, Tavily key, Redis URL, thresholds, TTLs, timeouts, `API_KEY`, `RATE_LIMIT_PER_MIN` (30), `MAX_QUERY_CHARS` (2000), feature flags (`DEGRADED_ANSWERS`). Provider switch = env change only. In Azure, the same settings arrive on the hosted-agent version's environment (values read from Key Vault at deploy time), and Azure OpenAI auth is keyless via managed identity (§14).
 
 ## 14. Infrastructure, IaC, CI
 
 The system runs **locally for dev/test** and is **deployed to Azure for production**; both paths are first-class.
 
 - **Local (dev/test)**: `docker-compose.yml` — `redis:8` + the agent container; `Dockerfile` (uv-based, multi-stage). One command: `docker compose up`. The CLI and `agent serve` run against local Redis with `.env` keys.
-- **Production (Azure, deployed via azd)**: `azure.yaml` + `infra/main.bicep`; `azd up` provisions **and deploys**: Container Apps environment + the agent API container (consumption plan, scale-to-zero), Azure Managed Redis (Balanced B0, TLS, vector search), Azure AI Foundry account with the three model deployments, Log Analytics + Application Insights, Key Vault. In-cloud authentication is keyless: the app's system-assigned managed identity holds `Cognitive Services OpenAI User`; the Tavily key and `API_KEY` come from Key Vault references. Region: `swedencentral` (EU residency, §8.6).
-- **CI/CD (GitHub Actions)**: **CI** on every push/PR — ruff (lint+format), pytest (unit + deterministic evals, Redis service container), `bicep build` validation. **CD** on `main` after CI passes — container image build + `azd deploy` to the production environment, authenticated via OIDC federated credentials (`azd pipeline config`; no long-lived cloud secrets in GitHub). Keyed live evals (groundedness) as a manual workflow. Terraform alternative discussed in ADR-0007.
+- **Production (Azure, deployed via azd)**: `azure.yaml` + `infra/main.bicep`; `azd up` provisions **and deploys**: a **Foundry Hosted Agent** (code-first zip with remote build, per-session sandbox isolation, Entra Agent ID — ADR-0009 superseded the originally planned Container Apps target at build time), Azure Managed Redis (Balanced B0, TLS, vector search), the Foundry account + project with the three model deployments, Log Analytics + Application Insights, Key Vault (secret source of truth, read at deploy time into the agent version's environment). In-cloud authentication is keyless via managed identity. Region: `swedencentral` (EU residency, §8.6).
+- **CI/CD (GitHub Actions)**: **CI** on every push/PR — ruff (lint+format), pytest (unit + deterministic evals, Redis service container), `bicep build` validation. **CD** on `main` after CI passes — `azd provision` + `azd deploy` (azure.ai.agents extension) + A2A enablement + smoke invoke, authenticated via OIDC federated credentials (`azd pipeline config`; no long-lived cloud secrets in GitHub). Keyed live evals (groundedness) as a manual workflow. Terraform alternative discussed in ADR-0007.
 - **Python 3.13** (`uv`-managed): newest release line verifiably supported by the full dependency chain (Agent Framework, trafilatura/lxml, redis-py). 3.14 is attempted at scaffold time — a one-line change under uv — and adopted if resolution and tests pass; an I/O-bound LLM workload gains nothing from 3.14's headline features, so it is not worth pre-interview risk (ADR-0007).
 
 ## 15. Repository Layout
@@ -274,7 +278,7 @@ Repository: `vadjs/memory-first-agent` (private GitHub).
 ├── infra/                # main.bicep + modules; azure.yaml at root
 ├── docs/
 │   ├── SAD.md            # architecture views: context, C4, sequences, deployment, QA scenarios
-│   ├── adr/              # ADR-0003..006
+│   ├── adr/              # ADR-0001..0011
 │   ├── blueprint.md      # production reference architecture (Azure) + multi-cloud mapping
 │   ├── assessment.md     # Well-Architected self-assessment + roadmap to production
 │   ├── cost-model.md     # per-turn economics, hit-rate sensitivity, KPIs
@@ -282,10 +286,10 @@ Repository: `vadjs/memory-first-agent` (private GitHub).
 │   ├── ai-assistance.md  # how AI assistance was used (task requirement)
 │   └── superpowers/      # this spec + the implementation plan
 ├── docker-compose.yml, Dockerfile, azure.yaml
-└── .github/workflows/ci.yml
+└── .github/workflows/    # ci.yml + deploy.yml
 ```
 
-ADRs (`docs/adr/`, chronological): 0001 memory content policy · 0002 consistency & durability (both written at design time) · 0003 orchestration framework · 0004 two-tier memory & thresholds · 0005 model selection & cost · 0006 vector index, dedup & freshness · 0007 runtime & IaC choices · 0008 reliability & degradation policy (written at build time).
+ADRs (`docs/adr/`, chronological): 0001 memory content policy · 0002 consistency & durability (both written at design time) · 0003 orchestration framework · 0004 two-tier memory & thresholds · 0005 model selection & cost · 0006 vector index, dedup & freshness · 0007 runtime & IaC choices · 0008 reliability & degradation policy (written at build time) · 0009 Foundry hosted variant · 0010 agent interoperability · 0011 ingest page summaries (written as the system evolved).
 
 ## 16. Out of Scope
 
@@ -299,7 +303,7 @@ Web UI; user auth/multi-tenancy beyond the static API key on the HTTP endpoint; 
 | Agent Framework workflow API friction | Thin orchestration layer; asyncio fallback behind same interfaces (§4.3) |
 | Extraction failures on some sites | trafilatura → readability fallback; per-page skip (§9) |
 | Tavily free-tier limits | ~1K credits/month ≫ demo needs; retries + clear error surfacing |
-| Azure trial credit burn | Per-token model deployments; Container Apps consumption plan scales to zero; the only always-on cost is Managed Redis Balanced B0 (~$0.5/day) — total projected spend well within credits |
+| Azure trial credit burn | Per-token model deployments; hosted-agent sandboxes deprovision when idle; the only always-on cost is Managed Redis Balanced B0 (~$0.5/day) — total projected spend well within credits |
 | Cloud deployment friction on trial subscription (resource-provider registration, Managed Redis SKU availability, ~15 min provisioning) | `azd up` runs early (during implementation, not at the end); if Managed Redis is unavailable to the subscription, fallback is a `redis:8` container app for the demo environment, recorded honestly in ADR-0007 |
 
 The subscription- and quota-related notes above are working context for this spec and the implementation plan only; they do not appear in the solution documentation (`README`, `docs/SAD.md`, `docs/blueprint.md`, etc.).

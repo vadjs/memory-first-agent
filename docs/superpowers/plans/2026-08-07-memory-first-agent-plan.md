@@ -334,3 +334,36 @@ class TokenBucket:  # Redis-backed, per API key
 ## Self-review
 
 Spec coverage: FR-1..8 → Tasks 3/6 (routing), 4 (web/markdown), 6 (two LLMs), 1/7 (logging, analytics), 7 (chat/REPL); NFR security → 5/8 (guardrails, API auth), reliability → 4/6, observability → 1/7 + App Insights (10), operability (local + deployed cloud) → 0/8/10, compliance → 3 (`forget_url`) + 11 (docs); IaC/CI/CD → 10; artifact pack → 11; e2e incl. cloud → 12. Type names cross-checked across task Interfaces blocks. No TBDs.
+
+---
+
+## Addendum — review follow-ups (2026-08-10)
+
+The tasks above are the build log and stay as written; where their interface sketches
+disagree with the shipped code, this addendum and the code are current. Two follow-up
+tasks landed after external review (they follow the Foundry Hosted Agent pivot,
+ADR-0009, which replaced the Container Apps target named in the Architecture note and
+Tasks 10/12):
+
+### Task 13: Route/Temporal as StrEnums
+
+Route and temporal-class values were bare string literals across five modules (the
+`Literal[...]` sketches in Tasks 1 and 5). They are now `StrEnum`s — `Route`, `Temporal`
+in `src/agent/domain.py`; members equal their string values, so the JSONL turn log,
+Redis storage, and comparisons against logged strings are unchanged. The lint gate grew
+to `SIM/RET/C4/PERF/PTH/RUF/PLE` on top of the Task 0 select list.
+
+- [x] Commit: `refactor: Route and Temporal as StrEnums; extended lint rule set`
+
+### Task 14: Ingest-time Page Summaries (ADR-0011)
+
+FR-3/FR-5 promise summarization on the web path; the Task 6 control flow shipped
+without it. The miss path now runs … chunk → screen → **summarize clean chunks per page
+(nano, parallel)** → upsert chunks + summaries …; each Page Summary is stored in the
+Knowledge Base with the page's provenance (`section = "[page summary]"`) and placed
+first in that page's synthesis context. Ordering is the security decision: the one
+rewriting step sees only screened content, and a summary carrying injection markers is
+dropped, never repaired (`src/agent/summarizer.py`).
+
+- [x] Tests: summary stored and first in context; injected summary dropped; full offline suite green (97 tests).
+- [x] Commit: `feat: ingest-time Page Summaries after screening (ADR-0011)`

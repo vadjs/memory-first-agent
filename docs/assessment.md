@@ -49,7 +49,7 @@ in CI's eval job).
 
 ## Operational Excellence
 
-**In place**: everything is code — infra (Bicep/azd), quality gates (lint, 91 tests,
+**In place**: everything is code — infra (Bicep/azd), quality gates (lint, 97 tests,
 deterministic evals, `bicep build` in CI), CD via OIDC with no standing secrets;
 structured JSON telemetry per turn; App Insights wiring; the docs you are reading.
 

@@ -19,4 +19,4 @@ typed `chat.completions.parse`, because the guardrails depend on schema-enforced
   (ADR-0009); the custom HTTP surface remains a local dev/admin tool.
 - **Agent Framework Workflows** — the framework's own graph layer; unnecessary for one
   linear flow, and keeping components framework-independent preserved testability
-  (91 tests run without any framework import in the routing path).
+  (97 tests run without any framework import in the routing path).
