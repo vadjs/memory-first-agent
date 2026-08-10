@@ -63,8 +63,6 @@ async def test_prior_messages_become_history():
 async def test_streaming_yields_full_answer():
     pipeline = FakePipeline()
     agent = build_hosted_agent(PipelineChatClient(pipeline))
-    chunks = []
     stream = agent.run("q", stream=True)
-    async for update in stream:
-        chunks.append(update.text if hasattr(update, "text") else str(update))
+    chunks = [update.text if hasattr(update, "text") else str(update) async for update in stream]
     assert "The answer." in "".join(chunks)

@@ -16,7 +16,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 
 from agent.config import Settings
 
-_ZERO_WIDTH = re.compile(r"[​‌‍⁠﻿]")
+# ZWSP, ZWNJ, ZWJ, word joiner, BOM — escaped so the invisibles are visible in source
+_ZERO_WIDTH = re.compile("[\u200b\u200c\u200d\u2060\ufeff]")
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _BASE64_BLOB = re.compile(r"[A-Za-z0-9+/=]{100,}")
 _TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)

@@ -53,7 +53,7 @@ async def test_direct_injection_refused(eval_env):
 
 async def test_miss_then_repeat_becomes_cache_hit(eval_env):
     """The core product loop: a miss writes memory; the repeat is a cache hit."""
-    pipeline, store = await eval_env(seed="none")
+    pipeline, _store = await eval_env(seed="none")
     first = await pipeline.answer_turn(QUERY)
     assert first.route == "miss_web"
     second = await pipeline.answer_turn(QUERY)

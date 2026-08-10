@@ -2,4 +2,6 @@ target-version = "py313"
 line-length = 100
 
 [lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "SIM", "RET", "C4", "PERF", "PTH", "RUF", "PLE"]
+# C408: kwargs-style dict() reads better in test parameter tables
+ignore = ["C408"]

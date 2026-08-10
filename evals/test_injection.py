@@ -30,7 +30,7 @@ async def test_poisoning_does_not_persist_into_future_turns(eval_env):
     """The memory-poisoning scenario from the threat model: turn 1 ingests a poisoned
     page; turn 2 (same topic) must not surface the injected content."""
     conv = EvalConv()
-    pipeline, store = await eval_env(conv=conv, page_markdown=POISONED)
+    pipeline, _store = await eval_env(conv=conv, page_markdown=POISONED)
     await pipeline.answer_turn(QUERY)
     second = await pipeline.answer_turn(QUERY)  # served from memory now
     assert second.route in ("hit_cache", "hit_chunks")

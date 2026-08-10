@@ -7,9 +7,11 @@ import json
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import TypedDict
 
 import structlog
+
+from agent.domain import Route, Temporal
 
 structlog.configure(
     processors=[
@@ -19,8 +21,6 @@ structlog.configure(
     ]
 )
 log = structlog.get_logger("agent")
-
-Route = Literal["hit_cache", "hit_chunks", "miss_web", "degraded", "refused"]
 
 # USD per 1M tokens (input, output) — Azure list prices, ADR-0005
 PRICES: dict[str, tuple[float, float]] = {
@@ -53,7 +53,7 @@ class TurnRecord:
     query: str
     route: Route
     topic: str
-    temporal: str
+    temporal: Temporal
     injection_flagged: bool
     contains_pii: bool
     scores: dict[str, float]

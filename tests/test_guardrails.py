@@ -94,7 +94,7 @@ def test_validate_citations_strips_fabricated_urls():
 
 def test_validate_citations_dedupes_and_keeps_order():
     answer = "See https://a.com/1 then https://b.com/2 then https://a.com/1."
-    clean, cited = validate_citations(answer, {"https://a.com/1", "https://b.com/2"})
+    _clean, cited = validate_citations(answer, {"https://a.com/1", "https://b.com/2"})
     assert cited == ["https://a.com/1", "https://b.com/2"]
 
 

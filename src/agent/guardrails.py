@@ -7,6 +7,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel
 
 from agent.chunker import Chunk
+from agent.domain import Temporal
 from agent.prompts import (
     PREFLIGHT_SYSTEM,
     SCREEN_SYSTEM,
@@ -38,9 +39,14 @@ class SupportsJson(Protocol):
     ) -> tuple[BaseModel, Usage]: ...
 
 
+def has_injection_markers(text: str) -> bool:
+    """Layer-1a deterministic screen, shared by preflight and derived-content checks."""
+    return bool(_INJECTION_PATTERNS.search(text))
+
+
 class PreflightOut(BaseModel):
     is_injection: bool
-    temporal: Literal["static", "slow", "volatile"]
+    temporal: Temporal
     topic: str
     contains_pii: bool
     standalone_query: str
@@ -53,7 +59,7 @@ class ScreenOut(BaseModel):
 @dataclass
 class Preflight:
     is_injection: bool
-    temporal: str
+    temporal: Temporal
     topic: str
     contains_pii: bool
     standalone_query: str
@@ -64,7 +70,7 @@ def _safe_default(query: str) -> Preflight:
     # Fail open toward the web (volatile), fail closed toward shared-memory writes (PII true).
     return Preflight(
         is_injection=False,
-        temporal="volatile",
+        temporal=Temporal.VOLATILE,
         topic="other",
         contains_pii=True,
         standalone_query=query,
@@ -72,10 +78,10 @@ def _safe_default(query: str) -> Preflight:
 
 
 async def preflight(query: str, history: list[dict], llm: SupportsJson) -> Preflight:
-    if _INJECTION_PATTERNS.search(query):
+    if has_injection_markers(query):
         return Preflight(
             is_injection=True,
-            temporal="volatile",
+            temporal=Temporal.VOLATILE,
             topic="other",
             contains_pii=False,
             standalone_query=query,

@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from agent.config import get_settings
+from agent.domain import Route
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 memory_app = typer.Typer(no_args_is_help=True)
@@ -20,11 +21,11 @@ app.add_typer(memory_app, name="memory", help="Inspect, clean, and erase agent m
 console = Console()
 
 _BADGES = {
-    "hit_cache": "[bold green]\\[memory ✓ cache][/]",
-    "hit_chunks": "[bold green]\\[memory ✓][/]",
-    "miss_web": "[bold yellow]\\[web ↯][/]",
-    "degraded": "[bold red]\\[degraded][/]",
-    "refused": "[bold red]\\[refused][/]",
+    Route.HIT_CACHE: "[bold green]\\[memory ✓ cache][/]",
+    Route.HIT_CHUNKS: "[bold green]\\[memory ✓][/]",
+    Route.MISS_WEB: "[bold yellow]\\[web ↯][/]",
+    Route.DEGRADED: "[bold red]\\[degraded][/]",
+    Route.REFUSED: "[bold red]\\[refused][/]",
 }
 
 

@@ -4,10 +4,11 @@ import random
 from collections import Counter
 from statistics import quantiles
 
+from agent.domain import Route
 from agent.telemetry import read_turns
 
-ANSWERED_ROUTES = {"hit_cache", "hit_chunks", "miss_web", "degraded"}
-HIT_ROUTES = {"hit_cache", "hit_chunks"}
+ANSWERED_ROUTES = {Route.HIT_CACHE, Route.HIT_CHUNKS, Route.MISS_WEB, Route.DEGRADED}
+HIT_ROUTES = {Route.HIT_CACHE, Route.HIT_CHUNKS}
 
 
 def summarize(turns: list[dict] | None = None) -> dict:

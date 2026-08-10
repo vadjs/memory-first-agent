@@ -2,7 +2,7 @@
 admin verbs (memory, erasure) are deliberately CLI-only."""
 
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel
@@ -27,10 +27,8 @@ class ChatOut(BaseModel):
 def create_app(pipeline, sessions, settings: Settings, limiter) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        try:
+        with suppress(Exception):  # Redis may be down at boot; /healthz reports it
             await pipeline.memory.ensure_indexes()
-        except Exception:
-            pass  # Redis may be down at boot; /healthz reports it
         yield
 
     api = FastAPI(title="memory-first-agent", lifespan=lifespan)
