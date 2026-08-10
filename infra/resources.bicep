@@ -94,6 +94,21 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2026-07-01' = {
   }
 }
 
+// Feeds the Foundry portal's Traces and Monitor views from the same App Insights
+// the rest of the estate uses — one observability plane, two consoles.
+resource projectAppInsights 'Microsoft.CognitiveServices/accounts/projects/connections@2026-05-01' = {
+  parent: project
+  name: 'app-insights'
+  properties: {
+    category: 'AppInsights'
+    target: appInsights.id
+    authType: 'ApiKey'
+    isSharedToAll: false
+    credentials: { key: appInsights.properties.ConnectionString }
+    metadata: { ApiType: 'Azure', ResourceId: appInsights.id }
+  }
+}
+
 // ------------------------------------------------------------------ memory ---
 resource redis 'Microsoft.Cache/redisEnterprise@2025-07-01' = {
   name: 'redis-${token}'

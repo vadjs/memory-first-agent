@@ -4,7 +4,11 @@ Foundry's remote build runs this file at the zip root; the `agent` package sits
 alongside it. Configuration arrives exclusively through environment variables set
 on the hosted-agent version — no files, no secrets in code."""
 
+import os
+
+from agent_framework.observability import enable_instrumentation
 from agent_framework_foundry_hosting import ResponsesHostServer
+from azure.ai.agentserver.core import configure_observability
 
 from agent.config import get_settings
 from agent.embeddings import AzureEmbedder
@@ -16,6 +20,13 @@ from agent.web import ContentFetcher, SearchClient
 
 
 def create_server() -> ResponsesHostServer:
+    # OTel → Azure Monitor: gen_ai spans for every model call plus server traces,
+    # surfaced in the Foundry portal's Traces/Monitor views via the project's
+    # App Insights connection. No-op when no connection string is configured.
+    configure_observability(
+        connection_string=os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
+    )
+    enable_instrumentation()
     settings = get_settings()
     memory = MemoryStore(settings.redis_url, AzureEmbedder(settings))
     pipeline = Pipeline(

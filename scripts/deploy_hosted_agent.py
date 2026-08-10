@@ -66,6 +66,10 @@ def main() -> None:
         "TAVILY_API_KEY": os.environ["TAVILY_API_KEY"],
         "REDIS_URL": os.environ["REDIS_URL"],
     }
+    if os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING"):
+        hosted_env["APPLICATIONINSIGHTS_CONNECTION_STRING"] = os.environ[
+            "APPLICATIONINSIGHTS_CONNECTION_STRING"
+        ]
 
     zip_path = build_zip()
     print(f"packaged {zip_path} ({zip_path.stat().st_size // 1024} KB)")

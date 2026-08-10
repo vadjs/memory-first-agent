@@ -71,9 +71,7 @@ class PipelineChatClient(BaseChatClient):
 
         async def updates() -> AsyncIterator[ChatResponseUpdate]:
             response = await self._answer(messages)
-            yield ChatResponseUpdate(
-                contents=list(response.messages[0].contents), role="assistant"
-            )
+            yield ChatResponseUpdate(contents=list(response.messages[0].contents), role="assistant")
 
         def finalize(collected: Sequence[ChatResponseUpdate]) -> ChatResponse:
             contents = [c for u in collected for c in (u.contents or [])]

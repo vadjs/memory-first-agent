@@ -97,8 +97,14 @@ target are hits for the other. Trade-offs and rationale: [ADR-0009](docs/adr/000
 
 ```bash
 export FOUNDRY_PROJECT_ENDPOINT=…   # from azd env get-values
-uv run python scripts/deploy_hosted_agent.py
+uv run python scripts/deploy_hosted_agent.py   # zip → remote build → route → invoke
+uv run python scripts/run_foundry_eval.py      # Groundedness+Relevance run → Evaluation tab
 ```
+
+The portal's operational views are wired end-to-end: **Traces** and **Monitor** show the
+agent's OpenTelemetry gen_ai spans (one `invoke_agent` span per turn with model and
+embedding children) through the project's Application Insights connection (IaC-managed),
+and **Evaluation** holds cloud eval runs over the golden set.
 
 ## Cloud deployment
 

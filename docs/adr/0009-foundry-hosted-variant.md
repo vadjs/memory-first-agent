@@ -30,3 +30,11 @@ needs no session store of its own.
 - The Answer Cache is shared *across deployment targets*: a question answered through
   the Container Apps API becomes a cache hit for the hosted agent, and vice versa —
   memory is the system of reuse, not the runtime.
+- The Foundry portal's operational surface is wired in: an `AppInsights` project
+  connection (IaC) feeds **Traces** and **Monitor** from the same Application Insights
+  the rest of the estate uses — one observability plane, two consoles — while the agent
+  exports OpenTelemetry gen_ai spans (`invoke_agent` → model/embedding child spans) via
+  `configure_observability` + `enable_instrumentation`. **Evaluation** runs are
+  submitted with `scripts/run_foundry_eval.py` (Groundedness + Relevance over the golden
+  set, results in the portal's Evaluation tab) — the managed counterpart of the local
+  eval suite, fit for scheduled quality fences.
