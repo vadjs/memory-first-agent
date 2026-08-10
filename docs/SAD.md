@@ -14,6 +14,7 @@ store with erasure obligations — not an opaque cache.
 flowchart TB
     U1[End users via channels] --> A
     U2[Operators via CLI] --> A
+    U3["Peer agents\n(A2A / Responses, ADR-0010)"] --> A
     subgraph A["Memory-First Web Agent"]
         direction TB
         S["Answer service (API)"]

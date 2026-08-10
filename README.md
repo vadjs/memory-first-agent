@@ -110,8 +110,17 @@ uv run python scripts/run_foundry_eval.py --traces   # judge real traffic from t
 ```
 
 CI runs lint, tests, evals, and Bicep validation on every push; CD (on `main`) is
-OIDC-federated — `azd provision`, agent secrets read from Key Vault, `azd deploy`, and
-a smoke invoke, with no long-lived cloud secrets in GitHub. The portal's operational
+OIDC-federated — `azd provision`, agent secrets read from Key Vault, `azd deploy`,
+A2A enablement, and a smoke invoke, with no long-lived cloud secrets in GitHub.
+
+**Wiring into a multi-agent estate** ([ADR-0010](docs/adr/0010-agent-interoperability.md)):
+the agent is a callee with two doors over one implementation — the native
+OpenAI-compatible **Responses** endpoint (any OpenAI SDK + Entra token), and an **A2A**
+endpoint bridged by the platform with a discoverable agent card
+(`…/protocols/a2a/agentCard/v1.0`), so other Foundry agents delegate to it via the A2A
+tool or Workflows and non-Foundry agents via any A2A SDK. CD re-applies the bridge
+after each deploy (`scripts/enable_a2a.py`); callers need the Foundry Agent Consumer
+role. The pipeline itself stays deliberately tool-free — no outgoing delegation. The portal's operational
 views are wired end-to-end: **Traces** and **Monitor** show the agent's OpenTelemetry
 gen_ai spans (one `invoke_agent` span per turn with model and embedding children)
 through the project's Application Insights connection (IaC-managed), and **Evaluation**
@@ -127,7 +136,7 @@ holds cloud eval runs over the golden set. See
 | [`infra/`](infra/) | Bicep for the full Azure environment (azd) |
 | [`CONTEXT.md`](CONTEXT.md) | Ubiquitous language — canonical terms used everywhere |
 | [`docs/SAD.md`](docs/SAD.md) | Architecture views: context, containers, components, sequences, deployment, QA scenarios |
-| [`docs/adr/`](docs/adr/) | Decision records 0001–0009 |
+| [`docs/adr/`](docs/adr/) | Decision records 0001–0010 |
 | [`docs/blueprint.md`](docs/blueprint.md) | Reference architecture: production Azure + multi-cloud portability |
 | [`docs/assessment.md`](docs/assessment.md) | Well-Architected self-assessment + roadmap |
 | [`docs/cost-model.md`](docs/cost-model.md) | Per-turn economics, hit-rate sensitivity, KPIs |

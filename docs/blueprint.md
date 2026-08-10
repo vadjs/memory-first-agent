@@ -59,6 +59,7 @@ Deltas from the implemented POC, in adoption order:
 | Gateway | none (direct ingress) | APIM GenAI gateway: token-rate policies, model failover, per-consumer quotas, response streaming |
 | Network | public endpoints, TLS | Private endpoints + BYO virtual network for the agent runtime |
 | Evaluation | CI evals + manual live groundedness | Foundry evaluations wired to nightly runs and release gates |
+| Multi-agent | Callee: Responses endpoint + A2A bridge with agent card (ADR-0010) | Supervisors delegate via Foundry Workflows or the A2A tool; per-caller Foundry Agent Consumer grants |
 | Scale | per-session sandboxes (platform-scaled), one region | Same scaling model at higher quotas; Redis tier grows vertically; HNSW past ~50–100K chunks; single-flight collapsing |
 
 Everything else — the routing logic, thresholds, guardrail layers, telemetry schema,

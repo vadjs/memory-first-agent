@@ -56,6 +56,13 @@ jobs:
           done
       - name: Deploy hosted agent (zip → remote build → new version)
         run: azd deploy --no-prompt
+      - uses: astral-sh/setup-uv@v5
+      - name: Enable incoming A2A (agent card + protocol bridge)
+        # azd deploy resets endpoint protocol configuration, so this re-applies
+        # the A2A bridge and agent card after every deploy (ADR-0010).
+        run: |
+          export FOUNDRY_PROJECT_ENDPOINT="$(azd env get-value FOUNDRY_PROJECT_ENDPOINT)"
+          uv run --frozen --no-dev python scripts/enable_a2a.py
       - name: Smoke-invoke the deployed agent
         run: >
           azd ai agent invoke memory-first-agent
