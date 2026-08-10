@@ -17,6 +17,7 @@ from agent_framework import (
     Message,
     ResponseStream,
 )
+from agent_framework._tools import FunctionInvocationLayer
 
 
 def _message_text(message: Any) -> str:
@@ -35,9 +36,14 @@ def _message_role(message: Any) -> str:
     return str(getattr(role, "value", role))
 
 
-class PipelineChatClient(BaseChatClient):
+class PipelineChatClient(FunctionInvocationLayer, BaseChatClient):
     """The one abstract hook agent-framework requires; both modes funnel through
-    a single answer_turn call, so hosted behavior can never drift from the API/CLI."""
+    a single answer_turn call, so hosted behavior can never drift from the API/CLI.
+
+    FunctionInvocationLayer is mixed in with no tools registered: it makes the
+    client a first-class citizen of Agent's capability checks (silencing a
+    per-request warning) while the pipeline remains deliberately tool-free
+    (least privilege, spec §8 layer 5)."""
 
     def __init__(self, pipeline, **kwargs: Any):
         super().__init__(**kwargs)

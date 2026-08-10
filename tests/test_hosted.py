@@ -1,7 +1,7 @@
 """The hosted-agent adapter: Pipeline exposed through the agent-framework protocol
 so Foundry's Responses host can run it (ADR-0009)."""
 
-from agent_framework import Agent
+from agent_framework import Agent, Message
 
 from agent.hosted import PipelineChatClient, build_hosted_agent
 from agent.pipeline import TurnResult
@@ -49,9 +49,9 @@ async def test_prior_messages_become_history():
     agent = build_hosted_agent(PipelineChatClient(pipeline))
     await agent.run(
         [
-            {"role": "user", "content": "first question"},
-            {"role": "assistant", "content": "first answer"},
-            {"role": "user", "content": "follow-up"},
+            Message(role="user", contents=["first question"]),
+            Message(role="assistant", contents=["first answer"]),
+            Message(role="user", contents=["follow-up"]),
         ]
     )
     query, history = pipeline.calls[0]

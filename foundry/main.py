@@ -23,6 +23,9 @@ def create_server() -> ResponsesHostServer:
     # OTel → Azure Monitor: gen_ai spans for every model call plus server traces,
     # surfaced in the Foundry portal's Traces/Monitor views via the project's
     # App Insights connection. No-op when no connection string is configured.
+    # Statsbeat (the exporter's vendor telemetry) probes the IMDS endpoint, which
+    # the hosted sandbox blocks — every probe would land as a failed dependency.
+    os.environ.setdefault("APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL", "true")
     configure_observability(
         connection_string=os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
     )
