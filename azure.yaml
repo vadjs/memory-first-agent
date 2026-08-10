@@ -27,7 +27,9 @@ services:
       - ai-project
     codeConfiguration:
       runtime: python_3_14
-      entryPoint: [python, main.py]
+      # azd expects a string here (the runtime supplies the interpreter);
+      # the SDK's ["python", "main.py"] array form is rejected by the extension.
+      entryPoint: main.py
       dependencyResolution: remote_build
     protocols:
       - protocol: responses
