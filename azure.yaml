@@ -15,7 +15,9 @@ services:
     # connects to it rather than synthesizing one. Output of `azd provision`.
     endpoint: ${FOUNDRY_PROJECT_ENDPOINT}
 
-  agent:
+  # Service key doubles as the cloud agent name for `azd ai agent` commands
+  # (the extension resolves invoke/show targets by service key, not `name`).
+  memory-first-agent:
     host: azure.ai.agent
     kind: hosted
     name: memory-first-agent
