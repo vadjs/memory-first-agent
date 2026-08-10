@@ -60,7 +60,7 @@ flowchart LR
     PRE --> R{router}
     R -->|"cache ≥ 0.85"| A1[cached answer]
     R -->|"chunks ≥ 0.70"| SYN["synthesis (luna)"]
-    R -->|miss / volatile| W["Tavily → fetch → markdown\n→ screen → Redis"]
+    R -->|miss / volatile| W["Tavily → fetch → markdown\n→ screen → summarize → Redis"]
     W --> SYN
     SYN --> V["citations ⊆ retrieved"] --> A2[answer + sources]
     A2 -.promote.-> M[(Answer Cache)]
@@ -75,7 +75,7 @@ allowed to cite only URLs that were actually retrieved. The full views live in
 ## Verification
 
 ```bash
-uv run pytest -m "not external"      # 91 unit + integration tests + deterministic evals
+uv run pytest -m "not external"      # 97 unit + integration tests + deterministic evals
 uv run pytest evals -m external      # live groundedness (LLM-judged; measured 4.12/5)
 ```
 
@@ -136,7 +136,7 @@ holds cloud eval runs over the golden set. See
 | [`infra/`](infra/) | Bicep for the full Azure environment (azd) |
 | [`CONTEXT.md`](CONTEXT.md) | Ubiquitous language — canonical terms used everywhere |
 | [`docs/SAD.md`](docs/SAD.md) | Architecture views: context, containers, components, sequences, deployment, QA scenarios |
-| [`docs/adr/`](docs/adr/) | Decision records 0001–0010 |
+| [`docs/adr/`](docs/adr/) | Decision records 0001–0011 |
 | [`docs/blueprint.md`](docs/blueprint.md) | Reference architecture: production Azure + multi-cloud portability |
 | [`docs/assessment.md`](docs/assessment.md) | Well-Architected self-assessment + roadmap |
 | [`docs/cost-model.md`](docs/cost-model.md) | Per-turn economics, hit-rate sensitivity, KPIs |

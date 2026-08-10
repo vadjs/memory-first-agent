@@ -51,7 +51,7 @@ flowchart TB
     R -->|"else"| WEBP
     subgraph WEBP["Web path"]
         S[Tavily search] --> F["fetch all pages concurrently\n(httpx → trafilatura; Tavily Extract fallback)"]
-        F --> ST[structural strip] --> CK[chunk] --> SC["screen (nano, parallel)\nquarantine instruction-like"] --> UP["upsert (idempotent)"]
+        F --> ST[structural strip] --> CK[chunk] --> SC["screen (nano, parallel)\nquarantine instruction-like"] --> SM["summarize clean chunks\n(nano, per page — ADR-0011)"] --> UP["upsert (idempotent)\nchunks + Page Summaries"]
     end
     UP --> SYN["Synthesis (Luna)\nspotlighted sources only"]
     SYN --> V["validate citations ⊆ retrieved"]
@@ -74,8 +74,8 @@ sequenceDiagram
     P->>M: cache? chunks?
     M-->>P: below thresholds
     P->>W: search + fetch + markdown
-    P->>P: strip · chunk · screen (nano)
-    P->>M: upsert clean chunks (quarantine flagged)
+    P->>P: strip · chunk · screen · summarize (nano)
+    P->>M: upsert clean chunks + Page Summary (quarantine flagged)
     P->>L: synthesize over spotlighted sources
     L-->>P: grounded answer
     P->>P: validate citations

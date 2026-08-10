@@ -26,7 +26,9 @@ every user. The design treats memory as a trust boundary.
    zero-width characters, HTML comments, and base64 blobs; then chunk-level
    classification. Flagged chunks are **quarantined**: stored with their verdict for
    audit, excluded from all retrieval. Classification-not-rewriting is deliberate — a
-   sanitizer that rewrites poisoned text can itself be injected.
+   sanitizer that rewrites poisoned text can itself be injected. The one rewriting step,
+   the ingest Page Summary (ADR-0011), sees only already-screened chunks, and its output
+   is checked for injection markers and dropped — never repaired — on a match.
 3. **Prompt architecture** — instruction hierarchy plus spotlighting: retrieved content
    arrives inside `<source url="…">` tags declared as untrusted data. Hierarchy
    fine-tuning reduces injection success; it is treated as one layer, never the control.

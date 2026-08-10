@@ -11,6 +11,7 @@ from agent.embeddings import FakeEmbedder
 from agent.guardrails import PreflightOut, ScreenOut
 from agent.memory import MemoryStore
 from agent.pipeline import Pipeline
+from agent.summarizer import SummaryOut
 from agent.telemetry import Usage
 from agent.web import PageContent, SearchResult
 
@@ -59,6 +60,8 @@ class EvalUtil:
                 ),
                 usage,
             )
+        if schema is SummaryOut:
+            return SummaryOut(summary="Digest: the strangler fig pattern, incrementally."), usage
         blocks = user.split("--- BLOCK")[1:]
         verdicts = [
             "instruction_like" if "previous instructions" in b.lower() else "content"

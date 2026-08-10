@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from agent.chunker import chunk_markdown
 from agent.config import Settings
+from agent.domain import Route, Temporal
 from agent.guardrails import (
     AT_CAPACITY_MESSAGE,
     REFUSAL_MESSAGE,
@@ -20,6 +21,7 @@ from agent.guardrails import (
 )
 from agent.memory import ChunkHit, MemoryStore
 from agent.prompts import build_synthesis_user
+from agent.summarizer import SUMMARY_SECTION, summarize_page
 from agent.telemetry import StageTiming, TurnRecord, Usage, cost_usd, log_turn
 from agent.web import ContentFetcher, SearchClient, strip_structural
 
@@ -37,7 +39,7 @@ UNAVAILABLE_MESSAGE = (
 @dataclass
 class TurnResult:
     answer: str
-    route: str
+    route: Route
     sources: list[dict]
     record: TurnRecord
 
@@ -70,10 +72,10 @@ class Pipeline:
         self.conv = conv
         self.util = util
 
-    def _is_fresh(self, ts: float, temporal: str) -> bool:
-        if temporal == "volatile":
+    def _is_fresh(self, ts: float, temporal: Temporal) -> bool:
+        if temporal == Temporal.VOLATILE:
             return False
-        if temporal == "slow":
+        if temporal == Temporal.SLOW:
             return ts >= time.time() - self.settings.slow_ttl_days * 86400
         return True  # static
 
@@ -85,12 +87,12 @@ class Pipeline:
             return drained
         return []
 
-    async def _promote(self, pf: Preflight, answer: str, cited: list[str], route: str) -> None:
+    async def _promote(self, pf: Preflight, answer: str, cited: list[str], route: Route) -> None:
         """Promotion invariant (ADR-0001): cache every clean synthesis, except
         volatile / degraded / refused / PII-flagged turns."""
-        if route not in ("hit_chunks", "miss_web"):
+        if route not in (Route.HIT_CHUNKS, Route.MISS_WEB):
             return
-        if pf.contains_pii or pf.temporal == "volatile":
+        if pf.contains_pii or pf.temporal == Temporal.VOLATILE:
             return
         await self.memory.put_qa(pf.standalone_query, answer, cited, pf.topic, pf.temporal)
 
@@ -109,12 +111,12 @@ class Pipeline:
             usages.append(pf.usage)
         watch.lap("preflight")
 
-        def finish(route: str, answer: str, cited: list[str], error: str = "") -> TurnResult:
+        def finish(route: Route, answer: str, cited: list[str], error: str = "") -> TurnResult:
             usages.extend(self._drain_embed_usages())
             record = TurnRecord(
                 turn_id=uuid.uuid4().hex[:12],
                 query=query,
-                route=route,  # type: ignore[arg-type]
+                route=route,
                 topic=pf.topic,
                 temporal=pf.temporal,
                 injection_flagged=pf.is_injection,
@@ -131,12 +133,12 @@ class Pipeline:
             return TurnResult(answer, route, [{"url": u} for u in cited], record)
 
         if pf.is_injection:
-            return finish("refused", REFUSAL_MESSAGE, [])
+            return finish(Route.REFUSED, REFUSAL_MESSAGE, [])
 
         sq = pf.standalone_query
         borderline: list[ChunkHit] = []
 
-        if pf.temporal != "volatile":
+        if pf.temporal != Temporal.VOLATILE:
             cache = await self.memory.search_cache(sq)
             if cache:
                 scores["cache_top"] = round(cache.similarity, 4)
@@ -146,7 +148,7 @@ class Pipeline:
                 and cache.similarity >= self.settings.cache_threshold
                 and self._is_fresh(cache.created_at, pf.temporal)
             ):
-                return finish("hit_cache", cache.answer, cache.urls)
+                return finish(Route.HIT_CACHE, cache.answer, cache.urls)
 
             hits = await self.memory.search_chunks(sq, self.settings.top_k)
             if hits:
@@ -158,12 +160,12 @@ class Pipeline:
                 try:
                     raw, usage = await self.conv.synthesize(build_synthesis_user(sq, context))
                 except Exception:
-                    return finish("refused", AT_CAPACITY_MESSAGE, [], error="synthesis_failed")
+                    return finish(Route.REFUSED, AT_CAPACITY_MESSAGE, [], error="synthesis_failed")
                 usages.append(usage)
                 watch.lap("synthesis")
                 answer, cited = validate_citations(raw, {h.url for h in context})
-                await self._promote(pf, answer, cited, "hit_chunks")
-                return finish("hit_chunks", answer, cited)
+                await self._promote(pf, answer, cited, Route.HIT_CHUNKS)
+                return finish(Route.HIT_CHUNKS, answer, cited)
             borderline = [
                 h
                 for h in fresh
@@ -184,22 +186,56 @@ class Pipeline:
                 try:
                     raw, usage = await self.conv.synthesize(build_synthesis_user(sq, borderline))
                 except Exception:
-                    return finish("refused", AT_CAPACITY_MESSAGE, [], error="synthesis_failed")
+                    return finish(Route.REFUSED, AT_CAPACITY_MESSAGE, [], error="synthesis_failed")
                 usages.append(usage)
                 answer, cited = validate_citations(raw, {h.url for h in borderline})
-                return finish("degraded", DEGRADED_PREFIX + answer, cited, error="web_unavailable")
-            return finish("refused", UNAVAILABLE_MESSAGE, [], error="web_unavailable")
+                return finish(
+                    Route.DEGRADED, DEGRADED_PREFIX + answer, cited, error="web_unavailable"
+                )
+            return finish(Route.REFUSED, UNAVAILABLE_MESSAGE, [], error="web_unavailable")
 
         now = time.time()
-        context: list[ChunkHit] = []
-        to_store: list[dict] = []
         per_page_chunks = [chunk_markdown(strip_structural(p.markdown)) for p in pages]
         screen_results = await asyncio.gather(
             *(screen_chunks(chunks, self.util) for chunks in per_page_chunks)
         )
-        for page, (screened, screen_usage) in zip(pages, screen_results, strict=True):
+        watch.lap("screen")
+        # Summarize each page's *clean* chunks (FR-3/FR-5, ADR-0011): quarantined
+        # content never reaches the summarizer, so classify-never-rewrite holds.
+        summaries = await asyncio.gather(
+            *(
+                summarize_page(
+                    page.title,
+                    page.url,
+                    [chunk.text for chunk, quarantined in screened if not quarantined],
+                    self.util,
+                )
+                for page, (screened, _) in zip(pages, screen_results, strict=True)
+            )
+        )
+        watch.lap("summarize")
+
+        context: list[ChunkHit] = []
+        to_store: list[dict] = []
+        for page, (screened, screen_usage), (summary, summary_usage) in zip(
+            pages, screen_results, summaries, strict=True
+        ):
             if screen_usage:
                 usages.append(screen_usage)
+            if summary_usage:
+                usages.append(summary_usage)
+            clean: list[tuple[str, str]] = []  # (text, section), summary first
+            if summary:
+                to_store.append(
+                    {
+                        "text": summary,
+                        "url": page.url,
+                        "title": page.title,
+                        "section": SUMMARY_SECTION,
+                        "quarantined": False,
+                    }
+                )
+                clean.append((summary, SUMMARY_SECTION))
             for chunk, quarantined in screened:
                 to_store.append(
                     {
@@ -210,19 +246,20 @@ class Pipeline:
                         "quarantined": quarantined,
                     }
                 )
-                if not quarantined and len(context) < MAX_CONTEXT_CHUNKS:
-                    context.append(
-                        ChunkHit(
-                            key="",
-                            text=chunk.text,
-                            url=page.url,
-                            title=page.title,
-                            section=chunk.section,
-                            fetched_at=now,
-                            similarity=0.0,
-                        )
+                if not quarantined:
+                    clean.append((chunk.text, chunk.section))
+            for text, section in clean[: max(0, MAX_CONTEXT_CHUNKS - len(context))]:
+                context.append(
+                    ChunkHit(
+                        key="",
+                        text=text,
+                        url=page.url,
+                        title=page.title,
+                        section=section,
+                        fetched_at=now,
+                        similarity=0.0,
                     )
-        watch.lap("screen")
+                )
         await self.memory.upsert_chunks(to_store)
         for page in pages:
             await self.memory.mark_url_ingested(page.url, self.settings.slow_ttl_days)
@@ -230,14 +267,14 @@ class Pipeline:
 
         context.extend(borderline)
         if not context:
-            return finish("refused", UNAVAILABLE_MESSAGE, [], error="no_usable_content")
+            return finish(Route.REFUSED, UNAVAILABLE_MESSAGE, [], error="no_usable_content")
         try:
             raw, usage = await self.conv.synthesize(build_synthesis_user(sq, context))
         except Exception:
-            return finish("refused", AT_CAPACITY_MESSAGE, [], error="synthesis_failed")
+            return finish(Route.REFUSED, AT_CAPACITY_MESSAGE, [], error="synthesis_failed")
         usages.append(usage)
         watch.lap("synthesis")
         allowed = {p.url for p in pages} | {h.url for h in borderline}
         answer, cited = validate_citations(raw, allowed)
-        await self._promote(pf, answer, cited, "miss_web")
-        return finish("miss_web", answer, cited)
+        await self._promote(pf, answer, cited, Route.MISS_WEB)
+        return finish(Route.MISS_WEB, answer, cited)

@@ -12,6 +12,7 @@ telemetry (`logs/turns.jsonl`).
 | Tavily search (1 credit) | $0.0080 | — | — |
 | Tavily Extract fallback (~0.2 cr/page, occasional) | ~$0.0-0.0016 | — | — |
 | Preflight + ingest screens (nano, ~4-8K tok) | ~$0.0004 | ~$0.0001 | ~$0.0001 |
+| Page Summaries (nano, ~1-3K tok/page, ADR-0011) | ~$0.0003 | — | — |
 | Synthesis (Luna, ~2.5-5K in / 200-500 out) | ~$0.0009 | ~$0.0009 | — |
 | Embeddings (query + chunks) | ~$0.0001 | ~$0.00002 | ~$0.00002 |
 | **Total** | **≈ $0.010** | **≈ $0.001** | **≈ $0.0001** |

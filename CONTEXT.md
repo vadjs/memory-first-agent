@@ -19,6 +19,10 @@ _Avoid_: chunk store, document store
 **Chunk**:
 A ~800-token markdown segment of a fetched page, carrying provenance (source URL, section, fetch time, content hash).
 
+**Page Summary**:
+A utility-model digest (≤120 words) of one page's clean chunks, stored in the Knowledge Base with the page's provenance and retrievable like any chunk. Derived content: produced only from screened chunks, dropped — never repaired — if it carries injection markers.
+_Avoid_: abstract, overview
+
 **Promotion**:
 Writing a validated, fully grounded synthesis into the Answer Cache — regardless of whether its sources came from the Knowledge Base or the live web.
 
