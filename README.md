@@ -77,6 +77,7 @@ allowed to cite only URLs that were actually retrieved. The full views live in
 ```bash
 uv run pytest -m "not external"      # 97 unit + integration tests + deterministic evals
 uv run pytest evals -m external      # live groundedness (LLM-judged; measured 4.12/5)
+uv run ty check                      # static type-check (ty), zero diagnostics
 ```
 
 The eval suite asserts the routing table (14 golden cases against real Redis similarity
@@ -109,7 +110,7 @@ uv run python scripts/run_foundry_eval.py      # Groundedness+Relevance run → 
 uv run python scripts/run_foundry_eval.py --traces   # judge real traffic from telemetry
 ```
 
-CI runs lint, tests, evals, and Bicep validation on every push; CD (on `main`) is
+CI runs lint, type-check, tests, evals, and Bicep validation on every push; CD (on `main`) is
 OIDC-federated — `azd provision`, agent secrets read from Key Vault, `azd deploy`,
 A2A enablement, and a smoke invoke, with no long-lived cloud secrets in GitHub.
 

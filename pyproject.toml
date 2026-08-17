@@ -39,6 +39,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "respx>=0.23.1",
     "ruff>=0.16.2",
+    "ty>=0.0.72",
 ]
 
 [tool.pytest.ini_options]
