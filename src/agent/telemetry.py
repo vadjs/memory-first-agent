@@ -1,10 +1,14 @@
 """Turn telemetry: one structured record per turn, with cost accounting.
 
 The JSONL turn log is the system of record (ADR-0002); Redis memory is not.
+Per-turn accounting flows through the TurnMeter: usage arrives as return values
+at each seam and is added here — never drained from another module's state.
 """
 
 import json
 import os
+import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TypedDict
@@ -29,6 +33,8 @@ PRICES: dict[str, tuple[float, float]] = {
     "text-embedding-3-small": (0.02, 0.0),
 }
 
+_unpriced_warned: set[str] = set()
+
 
 class StageTiming(TypedDict):
     stage: str
@@ -43,7 +49,14 @@ class Usage:
 
 
 def cost_usd(usage: Usage) -> float:
-    in_price, out_price = PRICES.get(usage.model, (0.0, 0.0))
+    if usage.model not in PRICES:
+        # A renamed deployment must not silently report free turns — cost analytics
+        # is the system's primary lever (spec §10), so the blind spot is loud.
+        if usage.model not in _unpriced_warned:
+            _unpriced_warned.add(usage.model)
+            log.warning("unpriced_model", model=usage.model)
+        return 0.0
+    in_price, out_price = PRICES[usage.model]
     return (usage.input_tokens * in_price + usage.output_tokens * out_price) / 1_000_000
 
 
@@ -64,6 +77,59 @@ class TurnRecord:
     session_id: str = ""
     error: str = ""
     extras: dict[str, str] = field(default_factory=dict)
+
+
+class TurnMeter:
+    """Per-turn accounting: stage timings, model usages, similarity scores —
+    one accumulator, one place cost math lives, one `finish` into a TurnRecord."""
+
+    def __init__(self):
+        self.stages: list[StageTiming] = []
+        self.usages: list[Usage] = []
+        self.scores: dict[str, float] = {}
+        self._t = time.perf_counter()
+
+    def lap(self, stage: str) -> None:
+        now = time.perf_counter()
+        self.stages.append({"stage": stage, "ms": round((now - self._t) * 1000, 1)})
+        self._t = now
+
+    def add(self, usage: Usage | None) -> None:
+        if usage is not None:
+            self.usages.append(usage)
+
+    def score(self, name: str, value: float) -> None:
+        self.scores[name] = round(value, 4)
+
+    def finish(
+        self,
+        *,
+        query: str,
+        route: Route,
+        topic: str,
+        temporal: Temporal,
+        injection_flagged: bool,
+        contains_pii: bool,
+        cited_urls: list[str],
+        session_id: str = "",
+        error: str = "",
+    ) -> TurnRecord:
+        return TurnRecord(
+            turn_id=uuid.uuid4().hex[:12],
+            query=query,
+            route=route,
+            topic=topic,
+            temporal=temporal,
+            injection_flagged=injection_flagged,
+            contains_pii=contains_pii,
+            scores=self.scores,
+            stages=self.stages,
+            usages=self.usages,
+            total_cost_usd=round(sum(cost_usd(u) for u in self.usages), 6),
+            cited_urls=cited_urls,
+            session_id=session_id,
+            error=error,
+        )
 
 
 def _log_dir() -> Path:

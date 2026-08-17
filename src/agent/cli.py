@@ -1,7 +1,8 @@
 """CLI over the shared Pipeline: chat REPL, one-shot ask, analytics, memory admin.
 
 Admin verbs (memory, erasure) live here on purpose — they are never exposed
-over HTTP (spec §12, attack-surface minimization)."""
+over HTTP (spec §12, attack-surface minimization). Construction goes through
+the composition root (`agent.compose`); this module only presents."""
 
 import asyncio
 import json
@@ -11,8 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from agent.config import get_settings
-from agent.domain import Route
+from agent.domain import QueryTooLongError, Route
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 memory_app = typer.Typer(no_args_is_help=True)
@@ -27,26 +27,6 @@ _BADGES = {
     Route.DEGRADED: "[bold red]\\[degraded][/]",
     Route.REFUSED: "[bold red]\\[refused][/]",
 }
-
-
-def _build():
-    from agent.embeddings import AzureEmbedder
-    from agent.llm import ConversationLLM, UtilityLLM
-    from agent.memory import MemoryStore
-    from agent.pipeline import Pipeline
-    from agent.web import ContentFetcher, SearchClient
-
-    settings = get_settings()
-    memory = MemoryStore(settings.redis_url, AzureEmbedder(settings))
-    pipeline = Pipeline(
-        settings,
-        memory,
-        SearchClient(settings),
-        ContentFetcher(settings),
-        ConversationLLM(settings),
-        UtilityLLM(settings),
-    )
-    return settings, memory, pipeline
 
 
 def _print_result(result, verbose: bool) -> None:
@@ -77,11 +57,14 @@ def ask(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show cost and stage timings."),
 ):
     """Answer one question and exit."""
-    settings, memory, pipeline = _build()
-    if len(question) > settings.max_query_chars:
-        console.print(f"[red]Question exceeds {settings.max_query_chars} characters.[/]")
-        raise typer.Exit(1)
-    asyncio.run(_run_turn(pipeline, memory, question, [], verbose))
+    from agent.compose import build_pipeline
+
+    _, memory, pipeline = build_pipeline()
+    try:
+        asyncio.run(_run_turn(pipeline, memory, question, [], verbose))
+    except QueryTooLongError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -89,9 +72,13 @@ def chat(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show cost and stage timings."),
 ):
     """Interactive REPL with rolling conversation history."""
-    settings, memory, pipeline = _build()
+    from agent.compose import build_pipeline
+    from agent.sessions import InMemorySessionStore
+
+    _, memory, pipeline = build_pipeline()
     console.print("[bold]memory-first agent[/] — type 'exit' to quit")
-    history: list[dict] = []
+    sessions = InMemorySessionStore()
+    session_id = "repl"
 
     async def loop():
         await memory.ensure_indexes()
@@ -102,15 +89,15 @@ def chat(
                 break
             if not query or query.lower() in {"exit", "quit"}:
                 break
-            if len(query) > settings.max_query_chars:
-                console.print(f"[red]Too long (max {settings.max_query_chars} chars).[/]")
+            history = await sessions.get(session_id)
+            try:
+                with console.status("thinking…"):
+                    result = await pipeline.answer_turn(query, history)
+            except QueryTooLongError as e:
+                console.print(f"[red]{e}[/]")
                 continue
-            with console.status("thinking…"):
-                result = await pipeline.answer_turn(query, history)
             _print_result(result, verbose)
-            history.append({"role": "user", "content": query})
-            history.append({"role": "assistant", "content": result.answer})
-            history[:] = history[-10:]
+            await sessions.append(session_id, query, result.answer)
 
     asyncio.run(loop())
 
@@ -129,13 +116,9 @@ def analytics(
     console.print(table)
 
     if cluster:
-        from agent.embeddings import AzureEmbedder
-        from agent.llm import UtilityLLM
-        from agent.memory import MemoryStore
+        from agent.compose import build_memory, build_util
 
-        settings = get_settings()
-        memory = MemoryStore(settings.redis_url, AzureEmbedder(settings))
-        clusters = asyncio.run(cluster_questions(memory, UtilityLLM(settings)))
+        clusters = asyncio.run(cluster_questions(build_memory(), build_util()))
         for c in clusters:
             console.print(Panel("\n".join(c["questions"]) or "(empty)", title=c["label"]))
 
@@ -151,18 +134,22 @@ def serve(
     uvicorn.run("agent.api:app", host=host, port=port)
 
 
+def _memory_store():
+    from agent.compose import build_memory
+
+    return build_memory()
+
+
 @memory_app.command()
 def stats():
     """Counts and Redis memory usage."""
-    _, memory, _ = _build()
-    console.print(asyncio.run(memory.stats()))
+    console.print(asyncio.run(_memory_store().stats()))
 
 
 @memory_app.command()
 def cleanup(older_than_days: int = typer.Option(30, help="Evict entries older than this.")):
     """Evict stale entries (routine staleness eviction — not erasure)."""
-    _, memory, _ = _build()
-    console.print(f"deleted: {asyncio.run(memory.cleanup(older_than_days))}")
+    console.print(f"deleted: {asyncio.run(_memory_store().cleanup(older_than_days))}")
 
 
 @memory_app.command()
@@ -170,8 +157,7 @@ def clear(yes: bool = typer.Option(False, "--yes", help="Skip confirmation.")):
     """Delete ALL agent memory."""
     if not yes and not typer.confirm("Delete all agent memory?"):
         raise typer.Exit(0)
-    _, memory, _ = _build()
-    console.print(f"deleted: {asyncio.run(memory.clear())}")
+    console.print(f"deleted: {asyncio.run(_memory_store().clear())}")
 
 
 @memory_app.command()
@@ -183,7 +169,7 @@ def forget(
     if not url and not question:
         console.print("[red]Provide --url or --question.[/]")
         raise typer.Exit(1)
-    _, memory, _ = _build()
+    memory = _memory_store()
 
     async def run():
         deleted = 0

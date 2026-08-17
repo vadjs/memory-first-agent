@@ -1,4 +1,4 @@
-from agent.analytics import summarize
+from agent.analytics import cluster_questions, summarize
 
 
 def turn(route, topic="technology", temporal="static", cost=0.01, ms=1000.0, **extra):
@@ -49,3 +49,39 @@ def test_empty_log():
         "injection_flagged": 0,
         "pii_flagged": 0,
     }
+
+
+class FakeQAMemory:
+    """Satisfies the one interface clustering consumes: iter_cached_questions."""
+
+    def __init__(self, items):
+        self.items = items
+
+    async def iter_cached_questions(self):
+        for question, vec in self.items:
+            yield question, vec
+
+
+class FakeLabeler:
+    async def complete_json(self, system, user, schema):
+        return schema(label=f"theme of {user.splitlines()[0]}"), None
+
+
+async def test_cluster_questions_groups_by_vector():
+    items = [
+        ("what is redis", [1.0, 0.0]),
+        ("explain redis persistence", [0.99, 0.05]),
+        ("redis vs memcached", [0.98, 0.1]),
+        ("how do plants grow", [0.0, 1.0]),
+        ("why are leaves green", [0.05, 0.99]),
+        ("what is photosynthesis", [0.1, 0.98]),
+    ]
+    clusters = await cluster_questions(FakeQAMemory(items), FakeLabeler())
+    assert len(clusters) == 2
+    assert sorted(len(c["questions"]) for c in clusters) == [3, 3]
+    assert all(c["label"].startswith("theme of") for c in clusters)
+
+
+async def test_cluster_questions_too_few():
+    clusters = await cluster_questions(FakeQAMemory([("only one", [1.0, 0.0])]), FakeLabeler())
+    assert clusters[0]["questions"] == ["only one"]

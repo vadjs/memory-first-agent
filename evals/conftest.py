@@ -9,7 +9,7 @@ import pytest
 from agent.config import Settings
 from agent.embeddings import FakeEmbedder
 from agent.guardrails import PreflightOut, ScreenOut
-from agent.memory import MemoryStore
+from agent.memory import ChunkRecord, MemoryStore
 from agent.pipeline import Pipeline
 from agent.summarizer import SummaryOut
 from agent.telemetry import Usage
@@ -130,7 +130,7 @@ async def eval_env():
             await store.put_qa(SEEDED_QUESTION, "Cached answer", [KB_URL], "technology", temporal)
         elif seed.startswith("chunks"):
             await store.upsert_chunks(
-                [{"text": SEEDED_CHUNK, "url": KB_URL, "title": "KB", "section": "Patterns"}]
+                [ChunkRecord(text=SEEDED_CHUNK, url=KB_URL, title="KB", section="Patterns")]
             )
             if seed == "chunks_stale":
                 age = time.time() - 30 * 86400

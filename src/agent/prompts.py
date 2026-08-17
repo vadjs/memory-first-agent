@@ -1,7 +1,11 @@
 """All prompt templates. Retrieved content is always wrapped as delimited,
 untrusted data (spotlighting) — instruction hierarchy alone is not trusted (spec §8)."""
 
-from agent.web import PageContent
+import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agent.memory import ChunkHit
 
 TAXONOMY = [
     "technology",
@@ -73,14 +77,12 @@ Rules:
 Return JSON: {"summary": "..."}"""
 
 
-def build_synthesis_user(question: str, sources: list) -> str:
+def build_synthesis_user(question: str, sources: list["ChunkHit"]) -> str:
     blocks = []
     for s in sources:
-        if isinstance(s, PageContent):
-            url, fetched, text = s.url, "just now", s.markdown
-        else:  # ChunkHit
-            url, fetched, text = s.url, f"{s.fetched_at:.0f}", s.text
-        blocks.append(f'<source url="{url}" fetched="{fetched}">\n{text}\n</source>')
+        # A date the model can act on — SYNTHESIS_SYSTEM asks for "as of ..." caveats.
+        fetched = time.strftime("%Y-%m-%d", time.gmtime(s.fetched_at))
+        blocks.append(f'<source url="{s.url}" fetched="{fetched}">\n{s.text}\n</source>')
     joined = "\n\n".join(blocks)
     return f"Question: {question}\n\nSources:\n{joined}"
 
@@ -91,9 +93,18 @@ def build_preflight_user(query: str, history: list[dict]) -> str:
     return f"Conversation history:\n{convo}\n\nUser input to classify:\n{query}"
 
 
+def _attr(value: str) -> str:
+    """Delimiter integrity: an interpolated attribute value must not be able to
+    close the attribute or the tag it sits in (spotlighting, spec §8)."""
+    return value.replace('"', "'").replace("<", "").replace(">", "")
+
+
 def build_summary_user(title: str, url: str, texts: list[str]) -> str:
     body = "\n\n".join(texts)
-    return f'Summarize this page content.\n\n<page url="{url}" title="{title}">\n{body}\n</page>'
+    return (
+        f'Summarize this page content.\n\n<page url="{_attr(url)}" title="{_attr(title)}">'
+        f"\n{body}\n</page>"
+    )
 
 
 def build_screen_user(texts: list[str]) -> str:

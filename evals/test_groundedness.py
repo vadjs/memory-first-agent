@@ -62,7 +62,7 @@ async def test_groundedness_mean_at_least_4(live):
     for question in GOLDEN_QUESTIONS:
         result = await pipeline.answer_turn(question)
         assert result.route in ("miss_web", "hit_chunks"), f"{question}: {result.route}"
-        context_hits = await memory.search_chunks(question, k=5)
+        context_hits, _ = await memory.search_chunks(question, k=5)
         context = "\n\n".join(h.text for h in context_hits) or "(no context)"
         verdict, _ = await util.complete_json(
             JUDGE_SYSTEM,

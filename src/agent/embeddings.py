@@ -1,12 +1,15 @@
-"""Embedding clients: Azure OpenAI-backed and a deterministic fake for tests/evals."""
+"""Embedding clients: Azure OpenAI-backed and a deterministic fake for tests/evals.
+
+`embed` returns its token usage in-band — accounting is a return value at this
+seam, never an attribute another module drains."""
 
 import hashlib
 import math
 from typing import Protocol
 
-from openai import AsyncOpenAI
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
 
+from agent.aoai import client_for
 from agent.config import Settings
 from agent.telemetry import Usage
 
@@ -14,20 +17,7 @@ from agent.telemetry import Usage
 class Embedder(Protocol):
     dim: int
 
-    async def embed(self, texts: list[str]) -> list[list[float]]: ...
-
-
-def _client_for(settings: Settings) -> AsyncOpenAI:
-    base_url = f"{settings.azure_openai_endpoint.rstrip('/')}/openai/v1/"
-    if settings.use_managed_identity:
-        # AsyncOpenAI awaits a callable api_key — the provider must be the aio variant.
-        from azure.identity.aio import DefaultAzureCredential, get_bearer_token_provider
-
-        provider = get_bearer_token_provider(
-            DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
-        )
-        return AsyncOpenAI(base_url=base_url, api_key=provider)
-    return AsyncOpenAI(base_url=base_url, api_key=settings.azure_openai_api_key)
+    async def embed(self, texts: list[str]) -> tuple[list[list[float]], Usage | None]: ...
 
 
 class AzureEmbedder:
@@ -35,8 +25,7 @@ class AzureEmbedder:
 
     def __init__(self, settings: Settings):
         self._settings = settings
-        self._client = _client_for(settings)
-        self.usages: list[Usage] = []  # drained by the pipeline per turn
+        self._client = client_for(settings)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -44,14 +33,14 @@ class AzureEmbedder:
         retry=retry_if_exception_type(Exception),
         reraise=True,
     )
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(self, texts: list[str]) -> tuple[list[list[float]], Usage | None]:
         r = await self._client.embeddings.create(
             model=self._settings.embed_deployment,
             input=texts,
             timeout=10.0,
         )
-        self.usages.append(Usage(self._settings.embed_deployment, r.usage.prompt_tokens, 0))
-        return [d.embedding for d in r.data]
+        usage = Usage(self._settings.embed_deployment, r.usage.prompt_tokens, 0)
+        return [d.embedding for d in r.data], usage
 
 
 class FakeEmbedder:
@@ -70,7 +59,7 @@ class FakeEmbedder:
         norm = math.sqrt(sum(x * x for x in raw)) or 1.0
         return [x / norm for x in raw]
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(self, texts: list[str]) -> tuple[list[list[float]], Usage | None]:
         out = []
         for t in texts:
             if t in self._vectors:
@@ -79,4 +68,4 @@ class FakeEmbedder:
                 out.append([x / norm for x in v])
             else:
                 out.append(self._hash_vector(t))
-        return out
+        return out, None

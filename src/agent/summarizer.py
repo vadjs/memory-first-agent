@@ -11,8 +11,6 @@ from agent.guardrails import SupportsJson, has_injection_markers
 from agent.prompts import SUMMARY_SYSTEM, build_summary_user
 from agent.telemetry import Usage, log
 
-SUMMARY_SECTION = "[page summary]"
-
 # Enough context for a faithful digest without paying for the whole page.
 _MAX_INPUT_CHUNKS = 8
 

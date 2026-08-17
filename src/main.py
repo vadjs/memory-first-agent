@@ -12,13 +12,8 @@ from agent_framework.observability import enable_instrumentation
 from agent_framework_foundry_hosting import ResponsesHostServer
 from azure.ai.agentserver.core import configure_observability
 
-from agent.config import get_settings
-from agent.embeddings import AzureEmbedder
+from agent.compose import build_pipeline
 from agent.hosted import PipelineChatClient, build_hosted_agent
-from agent.llm import ConversationLLM, UtilityLLM
-from agent.memory import MemoryStore
-from agent.pipeline import Pipeline
-from agent.web import ContentFetcher, SearchClient
 
 
 def create_server() -> ResponsesHostServer:
@@ -38,16 +33,7 @@ def create_server() -> ResponsesHostServer:
         enable_sensitive_data=capture_content,
     )
     enable_instrumentation(enable_sensitive_data=capture_content)
-    settings = get_settings()
-    memory = MemoryStore(settings.redis_url, AzureEmbedder(settings))
-    pipeline = Pipeline(
-        settings,
-        memory,
-        SearchClient(settings),
-        ContentFetcher(settings),
-        ConversationLLM(settings),
-        UtilityLLM(settings),
-    )
+    _, _, pipeline = build_pipeline()
     agent = build_hosted_agent(PipelineChatClient(pipeline))
     return ResponsesHostServer(agent)
 

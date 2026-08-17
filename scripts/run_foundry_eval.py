@@ -44,7 +44,7 @@ async def gather_items(project_client: AIProjectClient) -> list[EvalItem]:
         for question in GOLDEN_QUESTIONS:
             response = await openai_client.responses.create(input=question)
             answer = response.output_text
-            hits = await memory.search_chunks(question, k=5)
+            hits, _ = await memory.search_chunks(question, k=5)
             context = "\n\n".join(h.text for h in hits) or None
             items.append(
                 EvalItem(

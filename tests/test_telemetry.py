@@ -1,8 +1,9 @@
 import json
+import uuid
 
 import pytest
 
-from agent.telemetry import TurnRecord, Usage, cost_usd, log_turn, read_turns
+from agent.telemetry import TurnMeter, TurnRecord, Usage, cost_usd, log_turn, read_turns
 
 
 def test_cost_luna():
@@ -17,8 +18,43 @@ def test_cost_embeddings():
     assert cost_usd(Usage("text-embedding-3-small", 1_000_000, 0)) == pytest.approx(0.02)
 
 
-def test_cost_unknown_model_is_zero():
-    assert cost_usd(Usage("mystery-model", 1000, 1000)) == 0.0
+def test_cost_unknown_model_is_zero_but_loud(capsys):
+    # A renamed deployment must not silently report free turns (spec §10).
+    # Unique name per run: warn-once state is process-global, so a fixed name
+    # would fail on any rerun within the same interpreter.
+    model = f"mystery-{uuid.uuid4().hex[:8]}"
+    assert cost_usd(Usage(model, 1000, 1000)) == 0.0
+    assert "unpriced_model" in capsys.readouterr().out
+
+
+def test_unpriced_warning_fires_once_per_model(capsys):
+    model = f"mystery-{uuid.uuid4().hex[:8]}"
+    cost_usd(Usage(model, 1, 1))
+    cost_usd(Usage(model, 1, 1))
+    assert capsys.readouterr().out.count("unpriced_model") == 1
+
+
+def test_turn_meter_accumulates_and_finishes():
+    meter = TurnMeter()
+    meter.lap("preflight")
+    meter.add(Usage("gpt-5-nano", 1_000_000, 0))
+    meter.add(None)  # a seam with nothing to report — ignored
+    meter.score("cache_top", 0.87654)
+    rec = meter.finish(
+        query="q",
+        route="miss_web",
+        topic="technology",
+        temporal="static",
+        injection_flagged=False,
+        contains_pii=False,
+        cited_urls=["https://a.com"],
+        session_id="s-1",
+    )
+    assert [s["stage"] for s in rec.stages] == ["preflight"]
+    assert rec.usages == [Usage("gpt-5-nano", 1_000_000, 0)]
+    assert rec.total_cost_usd == pytest.approx(0.05)
+    assert rec.scores == {"cache_top": 0.8765}
+    assert rec.session_id == "s-1" and rec.turn_id
 
 
 def test_log_turn_roundtrip(tmp_path, monkeypatch):

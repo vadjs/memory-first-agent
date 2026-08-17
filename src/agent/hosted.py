@@ -17,7 +17,17 @@ from agent_framework import (
     Message,
     ResponseStream,
 )
-from agent_framework._tools import FunctionInvocationLayer
+
+from agent.domain import QueryTooLongError
+
+try:
+    # Vendor-private; only silences a per-request capability warning. A framework
+    # upgrade that moves it must degrade to the warning, not break the import.
+    from agent_framework._tools import FunctionInvocationLayer
+except ImportError:  # pragma: no cover
+
+    class FunctionInvocationLayer:  # type: ignore[no-redef]
+        pass
 
 
 def _message_text(message: Any) -> str:
@@ -58,7 +68,12 @@ class PipelineChatClient(FunctionInvocationLayer, BaseChatClient):
             for role, text in turns[: -1 if user_turns else None]
             if role in ("user", "assistant") and text
         ]
-        result = await self._pipeline.answer_turn(query, history)
+        try:
+            result = await self._pipeline.answer_turn(query, history)
+        except QueryTooLongError as e:
+            # Same translation the API (422) and CLI perform: a clean rejection
+            # message, not a protocol-level 500 out of the Responses host.
+            return ChatResponse(messages=Message(role="assistant", contents=[str(e)]))
         answer = result.answer
         if result.sources:
             answer += "\n\nSources:\n" + "\n".join(s["url"] for s in result.sources)

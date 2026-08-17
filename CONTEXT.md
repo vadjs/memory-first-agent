@@ -19,6 +19,10 @@ _Avoid_: chunk store, document store
 **Chunk**:
 A ~800-token markdown segment of a fetched page, carrying provenance (source URL, section, fetch time, content hash).
 
+**Ingest**:
+The acquisition stage of a miss turn: fetched pages are chunked, screened, summarized, and stored with provenance; pages ingested recently are not re-fetched — their screened chunks are reused from the Knowledge Base when fresh for the query's Temporal Class (volatile queries always fetch live). Only a page that stored reusable content is marked as ingested, and a marker with nothing reusable behind it is ignored: the page is fetched again.
+_Avoid_: crawl, index
+
 **Page Summary**:
 A utility-model digest (≤120 words) of one page's clean chunks, stored in the Knowledge Base with the page's provenance and retrievable like any chunk. Derived content: produced only from screened chunks, dropped — never repaired — if it carries injection markers.
 _Avoid_: abstract, overview

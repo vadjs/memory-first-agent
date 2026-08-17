@@ -3,6 +3,7 @@ import pytest
 
 from agent.api import create_app
 from agent.config import Settings
+from agent.domain import QueryTooLongError
 from agent.pipeline import TurnResult
 from agent.ratelimit import TokenBucket
 from agent.telemetry import TurnRecord
@@ -39,11 +40,15 @@ class FakeMemoryHandle:
 
 
 class FakePipeline:
-    def __init__(self, healthy=True):
+    def __init__(self, healthy=True, max_query_chars: int | None = None):
         self.memory = FakeMemoryHandle(healthy)
         self.history_seen: list[list[dict]] = []
+        self.max_query_chars = max_query_chars
 
     async def answer_turn(self, query, history=None, session_id=""):
+        # Mimic the Pipeline's input invariant (its interface, not just its type).
+        if self.max_query_chars is not None and len(query) > self.max_query_chars:
+            raise QueryTooLongError(f"query exceeds {self.max_query_chars} characters")
         self.history_seen.append(list(history or []))
         return TurnResult("An answer", "miss_web", [{"url": "https://a.com"}], record())
 
@@ -116,10 +121,25 @@ async def test_rate_limit_429():
 
 
 async def test_message_over_cap_is_422():
-    settings = Settings(_env_file=None, api_key="secret", max_query_chars=10)
-    async with client(settings=settings) as c:
+    # The Pipeline raises QueryTooLongError; the HTTP adapter only translates it to 422.
+    async with client(pipeline=FakePipeline(max_query_chars=10)) as c:
         r = await c.post("/chat", json={"message": "x" * 11}, headers=AUTH)
     assert r.status_code == 422
+    assert "exceeds 10 characters" in r.json()["detail"]
+
+
+async def test_internal_valueerror_is_not_repainted_as_422():
+    """Only the typed input invariant becomes a 422; any other ValueError from the
+    turn (corrupt cache JSON, strict-zip mismatch) is a server bug and must
+    propagate to a 500, unswallowed and unleaked."""
+
+    class CorruptPipeline(FakePipeline):
+        async def answer_turn(self, query, history=None, session_id=""):
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+    with pytest.raises(ValueError):
+        async with client(pipeline=CorruptPipeline()) as c:
+            await c.post("/chat", json={"message": "x"}, headers=AUTH)
 
 
 async def test_healthz_open_and_reports_redis():

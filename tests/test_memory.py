@@ -4,6 +4,7 @@ import pytest
 
 from agent.embeddings import FakeEmbedder
 from agent.memory import (
+    ChunkRecord,
     MemoryStore,
     normalize_question,
     normalize_text,
@@ -41,21 +42,20 @@ def test_to_similarity():
 
 async def test_fake_embedder_deterministic():
     e = FakeEmbedder(dim=8)
-    [a], [b] = await e.embed(["same text"]), await e.embed(["same text"])
-    assert a == b
-    [c] = await e.embed(["other text"])
-    assert a != c
+    (a_vecs, _), (b_vecs, _) = await e.embed(["same text"]), await e.embed(["same text"])
+    assert a_vecs[0] == b_vecs[0]
+    c_vecs, _ = await e.embed(["other text"])
+    assert a_vecs[0] != c_vecs[0]
 
 
 async def test_fake_embedder_pinned_vectors_normalized():
     e = FakeEmbedder(dim=2, vectors={"x": [3.0, 4.0]})
-    [v] = await e.embed(["x"])
-    assert v == pytest.approx([0.6, 0.8])
+    vecs, usage = await e.embed(["x"])
+    assert vecs[0] == pytest.approx([0.6, 0.8])
+    assert usage is None  # the fake is free
 
 
 # -- integration: real Redis 8 ------------------------------------------------
-
-pytestmark_redis = pytest.mark.redis
 
 
 @pytest.fixture
@@ -72,12 +72,12 @@ async def store():
     await s.aclose()
 
 
-CHUNK = {
-    "text": "Redis 8 bundles the query engine with vector search.",
-    "url": "https://redis.io/docs",
-    "title": "Redis docs",
-    "section": "Vectors",
-}
+CHUNK = ChunkRecord(
+    text="Redis 8 bundles the query engine with vector search.",
+    url="https://redis.io/docs",
+    title="Redis docs",
+    section="Vectors",
+)
 
 
 @pytest.mark.redis
@@ -88,25 +88,28 @@ async def test_indexes_idempotent(store):
 @pytest.mark.redis
 async def test_upsert_dedup(store):
     await store.upsert_chunks([CHUNK])
-    await store.upsert_chunks([{**CHUNK, "title": "changed"}])  # same text → same key
+    await store.upsert_chunks([ChunkRecord(CHUNK.text, CHUNK.url, title="changed")])
     stats = await store.stats()
-    assert stats["chunks"] == 1
+    assert stats["chunks"] == 1  # same text → same key
 
 
 @pytest.mark.redis
 async def test_search_identical_text_is_similarity_one(store):
     await store.upsert_chunks([CHUNK])
-    hits = await store.search_chunks(CHUNK["text"], k=3)
+    hits, _ = await store.search_chunks(CHUNK.text, k=3)
     assert hits and hits[0].similarity > 0.99
     assert hits[0].url == "https://redis.io/docs"
 
 
 @pytest.mark.redis
 async def test_quarantined_chunks_invisible_to_retrieval(store):
-    await store.upsert_chunks([{**CHUNK, "quarantined": True}])
+    await store.upsert_chunks(
+        [ChunkRecord(CHUNK.text, CHUNK.url, CHUNK.title, CHUNK.section, quarantined=True)]
+    )
     stats = await store.stats()
     assert stats["chunks"] == 1 and stats["quarantined"] == 1
-    assert await store.search_chunks(CHUNK["text"], k=3) == []
+    hits, _ = await store.search_chunks(CHUNK.text, k=3)
+    assert hits == []
 
 
 @pytest.mark.redis
@@ -114,11 +117,59 @@ async def test_answer_cache_roundtrip_and_paraphrase_gap(store):
     await store.put_qa(
         "What is Redis?", "A data store.", ["https://redis.io"], "technology", "static"
     )
-    hit = await store.search_cache("what is redis?")  # case-insensitive normalization
+    hit, _ = await store.search_cache("what is redis?")  # case-insensitive normalization
     assert hit is not None and hit.similarity > 0.99
     assert hit.answer == "A data store."
-    other = await store.search_cache("how do plants grow")
+    other, _ = await store.search_cache("how do plants grow")
     assert other is None or other.similarity < 0.9
+
+
+@pytest.mark.redis
+async def test_chunks_for_url_returns_clean_only(store):
+    await store.upsert_chunks(
+        [
+            CHUNK,
+            ChunkRecord("Injected imperative.", CHUNK.url, CHUNK.title, "Hidden", quarantined=True),
+            ChunkRecord("Unrelated page.", "https://other.test/x"),
+        ]
+    )
+    hits = await store.chunks_for_url("https://redis.io/docs/")  # trailing slash normalizes
+    assert [h.text for h in hits] == [CHUNK.text]
+    assert hits[0].section == "Vectors" and hits[0].similarity == 0.0
+
+
+@pytest.mark.redis
+async def test_chunks_for_url_document_order(store):
+    """Reuse must reassemble a page the way a fresh fetch reads it: by stored
+    pos, not by index or keyspace order."""
+    records = [
+        ChunkRecord(f"Chunk number {i}.", "https://redis.io/docs", section=f"S{i}", pos=i)
+        for i in (3, 1, 2)
+    ]
+    await store.upsert_chunks(records)
+    hits = await store.chunks_for_url("https://redis.io/docs")
+    assert [h.text for h in hits] == ["Chunk number 1.", "Chunk number 2.", "Chunk number 3."]
+
+
+@pytest.mark.redis
+async def test_iter_cached_questions_skips_incompatible_vectors(store):
+    await store.put_qa("What is Redis?", "A data store.", [], "technology", "static")
+    # A vector from another embedding generation: 3 floats against the store's dim of 8.
+    await store.r.hset(
+        store.qa_prefix + "0" * 64, mapping={"question": "old-gen", "vec": b"\x00" * 12}
+    )
+    items = [(q, v) async for q, v in store.iter_cached_questions()]
+    assert [q for q, _ in items] == ["What is Redis?"]
+
+
+@pytest.mark.redis
+async def test_iter_cached_questions_yields_vectors(store):
+    await store.put_qa("What is Redis?", "A data store.", [], "technology", "static")
+    items = [(q, v) async for q, v in store.iter_cached_questions()]
+    assert len(items) == 1
+    question, vec = items[0]
+    assert question == "What is Redis?"
+    assert len(vec) == 8 and sum(x * x for x in vec) == pytest.approx(1.0)
 
 
 @pytest.mark.redis

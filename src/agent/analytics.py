@@ -61,17 +61,13 @@ def _kmeans(vectors: list[list[float]], k: int, iters: int = 20) -> list[int]:
 async def cluster_questions(memory, util) -> list[dict]:
     """Emergent topics: k-means over Answer Cache question embeddings, labeled by the
     utility model. Complements the fixed taxonomy (spec §10)."""
-    import struct
-
     from pydantic import BaseModel
 
     questions: list[str] = []
     vectors: list[list[float]] = []
-    async for key in memory.r.scan_iter(match=f"{memory.qa_prefix}*"):
-        data = await memory.r.hmget(key, "question", "vec")
-        if data[0] and data[1]:
-            questions.append(data[0].decode("utf-8", errors="replace"))
-            vectors.append(list(struct.unpack(f"{len(data[1]) // 4}f", data[1])))
+    async for question, vec in memory.iter_cached_questions():
+        questions.append(question)
+        vectors.append(vec)
     if len(questions) < 3:
         return [{"label": "(not enough cached questions to cluster)", "questions": questions}]
 

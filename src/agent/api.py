@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from agent.analytics import summarize
 from agent.config import Settings
+from agent.domain import QueryTooLongError
 
 
 class ChatIn(BaseModel):
@@ -49,14 +50,14 @@ def create_app(pipeline, sessions, settings: Settings, limiter) -> FastAPI:
 
     @api.post("/chat", response_model=ChatOut)
     async def chat(body: ChatIn, _: str = Depends(rate_limited)) -> ChatOut:
-        if len(body.message) > settings.max_query_chars:
-            raise HTTPException(
-                status_code=422,
-                detail=f"message exceeds {settings.max_query_chars} characters",
-            )
         session_id = body.session_id or uuid.uuid4().hex[:16]
         history = await sessions.get(session_id)
-        result = await pipeline.answer_turn(body.message, history, session_id=session_id)
+        try:
+            result = await pipeline.answer_turn(body.message, history, session_id=session_id)
+        except QueryTooLongError as e:
+            # The Pipeline enforces its own input invariants; adapters only translate.
+            # Exactly this type: any other error is a server bug and must surface as 500.
+            raise HTTPException(status_code=422, detail=str(e)) from e
         await sessions.append(session_id, body.message, result.answer)
         return ChatOut(
             answer=result.answer,
@@ -81,20 +82,6 @@ def create_app(pipeline, sessions, settings: Settings, limiter) -> FastAPI:
     return api
 
 
-def _default_app() -> FastAPI:
-    from agent.cli import _build
-    from agent.ratelimit import TokenBucket
-    from agent.sessions import SessionStore
-
-    settings, memory, pipeline = _build()
-    return create_app(
-        pipeline,
-        SessionStore(memory.r),
-        settings,
-        TokenBucket(memory.r, settings.rate_limit_per_min),
-    )
-
-
 _app_instance: FastAPI | None = None
 
 
@@ -104,6 +91,8 @@ def __getattr__(name: str) -> FastAPI:
     if name == "app":
         global _app_instance
         if _app_instance is None:
-            _app_instance = _default_app()
+            from agent.compose import build_api_app
+
+            _app_instance = build_api_app()
         return _app_instance
     raise AttributeError(name)

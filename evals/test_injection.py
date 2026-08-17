@@ -22,7 +22,7 @@ async def test_poisoned_page_quarantined_end_to_end(eval_env):
     # stored for audit, but a later retrieval cannot surface it
     stats = await store.stats()
     assert stats["quarantined"] >= 1
-    hits = await store.search_chunks("ignore previous instructions DAN", k=5)
+    hits, _ = await store.search_chunks("ignore previous instructions DAN", k=5)
     assert all("Ignore all previous" not in h.text for h in hits)
 
 

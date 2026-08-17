@@ -17,8 +17,8 @@ from openai import (
 from pydantic import BaseModel
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter
 
+from agent.aoai import base_url_for, client_for
 from agent.config import Settings
-from agent.embeddings import _client_for
 from agent.prompts import SYNTHESIS_SYSTEM
 from agent.telemetry import Usage
 
@@ -53,7 +53,7 @@ class ConversationLLM:
 
     def __init__(self, settings: Settings):
         self._settings = settings
-        base_url = f"{settings.azure_openai_endpoint.rstrip('/')}/openai/v1/"
+        base_url = base_url_for(settings)
         if settings.use_managed_identity:
             from azure.identity import DefaultAzureCredential
 
@@ -94,7 +94,7 @@ class UtilityLLM:
 
     def __init__(self, settings: Settings):
         self._settings = settings
-        self._client: AsyncOpenAI = _client_for(settings)
+        self._client: AsyncOpenAI = client_for(settings)
 
     @_retry_transient
     async def complete_json(
