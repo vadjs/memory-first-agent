@@ -3,6 +3,7 @@ import uuid
 
 import pytest
 
+from agent.domain import Route, Temporal
 from agent.telemetry import TurnMeter, TurnRecord, Usage, cost_usd, log_turn, read_turns
 
 
@@ -42,9 +43,9 @@ def test_turn_meter_accumulates_and_finishes():
     meter.score("cache_top", 0.87654)
     rec = meter.finish(
         query="q",
-        route="miss_web",
+        route=Route.MISS_WEB,
         topic="technology",
-        temporal="static",
+        temporal=Temporal.STATIC,
         injection_flagged=False,
         contains_pii=False,
         cited_urls=["https://a.com"],
@@ -62,9 +63,9 @@ def test_log_turn_roundtrip(tmp_path, monkeypatch):
     rec = TurnRecord(
         turn_id="t-1",
         query="what is redis",
-        route="miss_web",
+        route=Route.MISS_WEB,
         topic="technology",
-        temporal="static",
+        temporal=Temporal.STATIC,
         injection_flagged=False,
         contains_pii=False,
         scores={"cache_top": 0.31, "chunk_top": 0.44},
@@ -89,9 +90,9 @@ def test_log_turn_survives_readonly_filesystem(monkeypatch, capsys):
     rec = TurnRecord(
         turn_id="t-ro",
         query="q",
-        route="hit_cache",
+        route=Route.HIT_CACHE,
         topic="technology",
-        temporal="static",
+        temporal=Temporal.STATIC,
         injection_flagged=False,
         contains_pii=False,
         scores={},

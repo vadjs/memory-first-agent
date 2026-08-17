@@ -46,7 +46,7 @@ def _message_role(message: Any) -> str:
     return str(getattr(role, "value", role))
 
 
-class PipelineChatClient(FunctionInvocationLayer, BaseChatClient):
+class PipelineChatClient(FunctionInvocationLayer, BaseChatClient):  # ty: ignore[unsupported-base]
     """The one abstract hook agent-framework requires; both modes funnel through
     a single answer_turn call, so hosted behavior can never drift from the API/CLI.
 

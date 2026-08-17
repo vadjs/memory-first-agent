@@ -31,17 +31,20 @@ class SessionStore:
         return self.prefix + session_id
 
     async def get(self, session_id: str) -> list[dict]:
-        raw = await self.r.lrange(self._key(session_id), -self.max_messages, -1)
+        # redis-py types hybrid sync/async commands as `Awaitable[T] | T`;
+        # on the asyncio client every such call is awaitable, hence the ignores.
+        key = self._key(session_id)
+        raw = await self.r.lrange(key, -self.max_messages, -1)  # ty: ignore[invalid-await]
         return [json.loads(m) for m in raw]
 
     async def append(self, session_id: str, user: str, assistant: str) -> None:
         key = self._key(session_id)
-        await self.r.rpush(
+        await self.r.rpush(  # ty: ignore[invalid-await]
             key,
             json.dumps({"role": "user", "content": user}),
             json.dumps({"role": "assistant", "content": assistant}),
         )
-        await self.r.ltrim(key, -self.max_messages, -1)
+        await self.r.ltrim(key, -self.max_messages, -1)  # ty: ignore[invalid-await]
         await self.r.expire(key, self.ttl_s)
 
 

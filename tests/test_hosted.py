@@ -3,19 +3,19 @@ so Foundry's Responses host can run it (ADR-0009)."""
 
 from agent_framework import Agent, Message
 
-from agent.domain import QueryTooLongError
+from agent.domain import QueryTooLongError, Route, Temporal
 from agent.hosted import PipelineChatClient, build_hosted_agent
 from agent.pipeline import TurnResult
 from agent.telemetry import TurnRecord
 
 
-def record(route="miss_web") -> TurnRecord:
+def record(route=Route.MISS_WEB) -> TurnRecord:
     return TurnRecord(
         turn_id="t-1",
         query="q",
         route=route,
         topic="technology",
-        temporal="static",
+        temporal=Temporal.STATIC,
         injection_flagged=False,
         contains_pii=False,
         scores={},
@@ -32,7 +32,8 @@ class FakePipeline:
 
     async def answer_turn(self, query, history=None, session_id=""):
         self.calls.append((query, list(history or [])))
-        return TurnResult("The answer.", "hit_chunks", [{"url": "https://a.com/doc"}], record())
+        sources = [{"url": "https://a.com/doc"}]
+        return TurnResult("The answer.", Route.HIT_CHUNKS, sources, record(Route.HIT_CHUNKS))
 
 
 async def test_agent_run_returns_answer_with_sources():

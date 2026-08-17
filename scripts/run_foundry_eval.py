@@ -40,7 +40,11 @@ async def gather_items(project_client: AIProjectClient) -> list[EvalItem]:
     settings = Settings()
     memory = MemoryStore(settings.redis_url, AzureEmbedder(settings))
     items = []
-    async with project_client.get_openai_client(agent_name=AGENT_NAME) as openai_client:
+    # get_openai_client is added by azure.ai.projects' `_patch` module at runtime;
+    # type checkers resolve the generated `_client` class, which lacks it.
+    async with project_client.get_openai_client(  # ty: ignore[unresolved-attribute]
+        agent_name=AGENT_NAME
+    ) as openai_client:
         for question in GOLDEN_QUESTIONS:
             response = await openai_client.responses.create(input=question)
             answer = response.output_text

@@ -3,6 +3,7 @@ fake web and LLMs — so routing decisions under test are the real similarity ma
 
 import math
 import time
+from typing import Literal, cast
 
 import pytest
 
@@ -13,7 +14,7 @@ from agent.memory import ChunkRecord, MemoryStore
 from agent.pipeline import Pipeline
 from agent.summarizer import SummaryOut
 from agent.telemetry import Usage
-from agent.web import PageContent, SearchResult
+from agent.web import ContentFetcher, PageContent, SearchClient, SearchResult
 
 QUERY = "what is the strangler fig pattern"
 SEEDED_QUESTION = "explain the strangler fig approach for legacy systems"
@@ -63,7 +64,7 @@ class EvalUtil:
         if schema is SummaryOut:
             return SummaryOut(summary="Digest: the strangler fig pattern, incrementally."), usage
         blocks = user.split("--- BLOCK")[1:]
-        verdicts = [
+        verdicts: list[Literal["content", "instruction_like"]] = [
             "instruction_like" if "previous instructions" in b.lower() else "content"
             for b in blocks
         ]
@@ -136,14 +137,15 @@ async def eval_env():
                 age = time.time() - 30 * 86400
         if age is not None:
             async for key in store.r.scan_iter(match=f"{store.chunk_prefix}*"):
-                await store.r.hset(key, "fetched_at", age)
+                # redis-py types hybrid sync/async commands as `Awaitable[T] | T`
+                await store.r.hset(key, "fetched_at", str(age))  # ty: ignore[invalid-await]
 
         fetcher = EvalFetcher(page_markdown) if page_markdown else EvalFetcher()
         pipeline = Pipeline(
             Settings(_env_file=None),
             store,
-            EvalSearch(down=search_down),
-            fetcher,
+            cast(SearchClient, EvalSearch(down=search_down)),
+            cast(ContentFetcher, fetcher),
             conv or EvalConv(),
             EvalUtil(temporal=temporal, contains_pii=contains_pii),
         )

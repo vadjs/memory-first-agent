@@ -2,21 +2,28 @@
 
 import re
 import time
+from typing import cast
 
 from fakes import PAGE, FakeFetcher, FakeMemory, FakeUtil
 
 from agent.config import Settings
 from agent.domain import SUMMARY_SECTION, Temporal
 from agent.ingest import MAX_CONTEXT_CHUNKS, Ingestion
-from agent.memory import ChunkHit
+from agent.memory import ChunkHit, MemoryStore
 from agent.telemetry import TurnMeter
-from agent.web import PageContent
+from agent.web import ContentFetcher, PageContent
 
 
 def make(pages=None, util=None, memory=None):
     memory = memory or FakeMemory()
     fetcher = FakeFetcher(pages if pages is not None else [PAGE])
-    return Ingestion(Settings(_env_file=None), memory, fetcher, util or FakeUtil()), memory, fetcher
+    ingestion = Ingestion(
+        Settings(_env_file=None),
+        cast(MemoryStore, memory),
+        cast(ContentFetcher, fetcher),
+        util or FakeUtil(),
+    )
+    return ingestion, memory, fetcher
 
 
 async def test_stores_summary_first_and_marks_url():

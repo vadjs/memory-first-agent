@@ -34,9 +34,9 @@ _INJECTION_PATTERNS = re.compile(
 
 
 class SupportsJson(Protocol):
-    async def complete_json(
-        self, system: str, user: str, schema: type[BaseModel]
-    ) -> tuple[BaseModel, Usage]: ...
+    async def complete_json[SchemaT: BaseModel](
+        self, system: str, user: str, schema: type[SchemaT]
+    ) -> tuple[SchemaT, Usage]: ...
 
 
 def has_injection_markers(text: str) -> bool:

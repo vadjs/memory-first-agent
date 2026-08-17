@@ -70,7 +70,8 @@ class ConversationLLM:
             )
         # OpenAIChatClient speaks the Responses API: reasoning effort is nested there.
         self._agent = Agent(
-            client=client,
+            # agent-framework's own OpenAIChatClient fails its Supports* protocol generics
+            client=client,  # ty: ignore[invalid-argument-type]
             instructions=SYNTHESIS_SYSTEM,
             default_options={"reasoning": {"effort": "none"}},
         )
@@ -97,9 +98,9 @@ class UtilityLLM:
         self._client: AsyncOpenAI = client_for(settings)
 
     @_retry_transient
-    async def complete_json(
-        self, system: str, user: str, schema: type[BaseModel]
-    ) -> tuple[BaseModel, Usage]:
+    async def complete_json[SchemaT: BaseModel](
+        self, system: str, user: str, schema: type[SchemaT]
+    ) -> tuple[SchemaT, Usage]:
         response = await self._client.chat.completions.parse(
             model=self._settings.utility_deployment,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -110,9 +111,10 @@ class UtilityLLM:
         parsed = response.choices[0].message.parsed
         if parsed is None:
             raise ValueError("structured output missing")
+        u = response.usage
         usage = Usage(
             self._settings.utility_deployment,
-            response.usage.prompt_tokens,
-            response.usage.completion_tokens,
+            u.prompt_tokens if u else 0,
+            u.completion_tokens if u else 0,
         )
         return parsed, usage

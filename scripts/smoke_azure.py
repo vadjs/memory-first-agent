@@ -24,10 +24,8 @@ async def main() -> None:
         )
         ms = (time.perf_counter() - t0) * 1000
         u = r.usage
-        print(
-            f"{deployment}: {r.choices[0].message.content!r} "
-            f"{ms:.0f}ms in={u.prompt_tokens} out={u.completion_tokens}"
-        )
+        tokens = f"in={u.prompt_tokens} out={u.completion_tokens}" if u else "usage=n/a"
+        print(f"{deployment}: {r.choices[0].message.content!r} {ms:.0f}ms {tokens}")
 
     t0 = time.perf_counter()
     e = await client.embeddings.create(model=s.embed_deployment, input=["hello world"])

@@ -3,19 +3,19 @@ import pytest
 
 from agent.api import create_app
 from agent.config import Settings
-from agent.domain import QueryTooLongError
+from agent.domain import QueryTooLongError, Route, Temporal
 from agent.pipeline import TurnResult
 from agent.ratelimit import TokenBucket
 from agent.telemetry import TurnRecord
 
 
-def record(turn_id="t-1", route="miss_web") -> TurnRecord:
+def record(turn_id="t-1", route=Route.MISS_WEB) -> TurnRecord:
     return TurnRecord(
         turn_id=turn_id,
         query="q",
         route=route,
         topic="technology",
-        temporal="static",
+        temporal=Temporal.STATIC,
         injection_flagged=False,
         contains_pii=False,
         scores={},
@@ -50,7 +50,7 @@ class FakePipeline:
         if self.max_query_chars is not None and len(query) > self.max_query_chars:
             raise QueryTooLongError(f"query exceeds {self.max_query_chars} characters")
         self.history_seen.append(list(history or []))
-        return TurnResult("An answer", "miss_web", [{"url": "https://a.com"}], record())
+        return TurnResult("An answer", Route.MISS_WEB, [{"url": "https://a.com"}], record())
 
 
 class FakeSessions:

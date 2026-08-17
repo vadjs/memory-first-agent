@@ -19,7 +19,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from redis import ResponseError
 from redis.asyncio import Redis
-from redis.commands.search.field import NumericField, TagField, TextField, VectorField
+from redis.commands.search.field import Field, NumericField, TagField, TextField, VectorField
 from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
@@ -130,7 +130,7 @@ class MemoryStore:
             "DIM": self.dim,
             "DISTANCE_METRIC": "COSINE",
         }
-        for index, prefix, fields in (
+        indexes: list[tuple[str, str, list[Field]]] = [
             (
                 self.chunk_index,
                 self.chunk_prefix,
@@ -149,7 +149,8 @@ class MemoryStore:
                     VectorField("vec", "FLAT", vector_schema),
                 ],
             ),
-        ):
+        ]
+        for index, prefix, fields in indexes:
             try:
                 await self.r.ft(index).create_index(
                     fields,
@@ -251,7 +252,9 @@ class MemoryStore:
         (a dimension switch, a test embedder against shared Redis) can coexist;
         incompatible entries are skipped loudly, never crashed on downstream."""
         async for key in self.r.scan_iter(match=f"{self.qa_prefix}*"):
-            data = await self.r.hmget(key, "question", "vec")
+            # redis-py types hybrid sync/async commands as `Awaitable[T] | T`;
+            # on the asyncio client every such call is awaitable, hence the ignores.
+            data = await self.r.hmget(key, ["question", "vec"])  # ty: ignore[invalid-await]
             if not (data[0] and data[1]):
                 continue
             if len(data[1]) % 4 or len(data[1]) // 4 != self.dim:
@@ -295,7 +298,7 @@ class MemoryStore:
     ) -> Usage | None:
         norm = normalize_question(question)
         vectors, usage = await self.embedder.embed([norm])
-        await self.r.hset(
+        await self.r.hset(  # ty: ignore[invalid-await]
             self.qa_prefix + sha(norm),
             mapping={
                 "question": question,
@@ -324,10 +327,11 @@ class MemoryStore:
         target = normalize_url(url)
         deleted = 0
         async for key in self.r.scan_iter(match=f"{self.chunk_prefix}*"):
-            if _s(await self.r.hget(key, "url")) == target:
+            if _s(await self.r.hget(key, "url")) == target:  # ty: ignore[invalid-await]
                 deleted += await self.r.delete(key)
         async for key in self.r.scan_iter(match=f"{self.qa_prefix}*"):
-            urls = json.loads(_s(await self.r.hget(key, "urls")) or "[]")
+            raw_urls = await self.r.hget(key, "urls")  # ty: ignore[invalid-await]
+            urls = json.loads(_s(raw_urls) or "[]")
             if target in (normalize_url(u) for u in urls):
                 deleted += await self.r.delete(key)
         deleted += await self.r.delete(self.url_prefix + sha(target))
@@ -341,7 +345,8 @@ class MemoryStore:
         deleted = 0
         for prefix, ts_field in ((self.chunk_prefix, "fetched_at"), (self.qa_prefix, "created_at")):
             async for key in self.r.scan_iter(match=f"{prefix}*"):
-                ts = float(_s(await self.r.hget(key, ts_field)) or 0)
+                raw_ts = await self.r.hget(key, ts_field)  # ty: ignore[invalid-await]
+                ts = float(_s(raw_ts) or 0)
                 if ts < cutoff:
                     deleted += await self.r.delete(key)
         return deleted
@@ -350,7 +355,7 @@ class MemoryStore:
         counts = {"chunks": 0, "quarantined": 0, "qa": 0}
         async for key in self.r.scan_iter(match=f"{self.chunk_prefix}*"):
             counts["chunks"] += 1
-            if _s(await self.r.hget(key, "quarantined")) == "1":
+            if _s(await self.r.hget(key, "quarantined")) == "1":  # ty: ignore[invalid-await]
                 counts["quarantined"] += 1
         async for _ in self.r.scan_iter(match=f"{self.qa_prefix}*"):
             counts["qa"] += 1
@@ -365,7 +370,7 @@ class MemoryStore:
         return deleted
 
     async def ping(self) -> bool:
-        return bool(await self.r.ping())
+        return bool(await self.r.ping())  # ty: ignore[invalid-await]
 
     async def aclose(self) -> None:
         await self.r.aclose()

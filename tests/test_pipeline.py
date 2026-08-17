@@ -1,15 +1,16 @@
 import time
+from typing import Any, cast
 
 import pytest
 from fakes import PAGE, FakeFetcher, FakeMemory, FakeUtil
 
 from agent.config import Settings
-from agent.domain import SUMMARY_SECTION
+from agent.domain import SUMMARY_SECTION, Temporal
 from agent.guardrails import PreflightOut
 from agent.memory import CacheHit, ChunkHit
 from agent.pipeline import Pipeline
 from agent.telemetry import Usage
-from agent.web import PageContent, SearchResult
+from agent.web import ContentFetcher, PageContent, SearchClient, SearchResult
 
 
 @pytest.fixture(autouse=True)
@@ -43,9 +44,9 @@ class FakeSearch:
 
 
 def pf(**overrides) -> PreflightOut:
-    base = dict(
+    base: dict[str, Any] = dict(
         is_injection=False,
-        temporal="static",
+        temporal=Temporal.STATIC,
         topic="technology",
         contains_pii=False,
         standalone_query="what is the strangler fig pattern",
@@ -73,8 +74,8 @@ def make(memory, search=None, fetcher=None, conv=None, util=None, **cfg):
     return Pipeline(
         settings(**cfg),
         memory,
-        search or FakeSearch([RESULT]),
-        fetcher or FakeFetcher([PAGE]),
+        cast(SearchClient, search or FakeSearch([RESULT])),
+        cast(ContentFetcher, fetcher or FakeFetcher([PAGE])),
         conv or FakeConv("Answer. Sources: https://web.test/article"),
         util or FakeUtil(pf()),
     )
