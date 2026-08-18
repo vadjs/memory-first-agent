@@ -16,3 +16,9 @@ augments web synthesis. Redis returns cosine *distance*; exactly one helper
 - Observed live: an exact repeat hits the cache; a paraphrase typically lands below 0.85
   and is served by the chunk tier instead — both routes are memory hits, which is the
   intended division of labor, not a defect.
+- The upgrade path for the chunk gate is a cross-encoder reranker (retrieve wide,
+  rerank, keep top-k): bi-encoder cosine is the weakest signal for asymmetric
+  question↔chunk matching, and a joint-scoring reranker sharpens the hit/miss routing
+  decision. Reranker scores are not cosine similarities, so adopting one moves the
+  gate and floor onto a new, separately calibrated scale (`docs/assessment.md`,
+  roadmap item 8).

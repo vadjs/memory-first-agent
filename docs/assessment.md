@@ -79,3 +79,12 @@ point documented but not automated (ADR-0006).
 6. **Single-flight collapsing** of concurrent identical misses (correct today via
    idempotency; wasteful under thundering-herd load)
 7. **HNSW migration** at the ~50–100K chunk mark (ADR-0006 parameters)
+8. **Cross-encoder reranking** on the chunk path (retrieve wide → rerank → top 5;
+   sharpens the hit/miss gate that rides on raw bi-encoder cosine today; needs gate
+   recalibration per ADR-0004; pairs with item 7 — reranking absorbs HNSW's recall loss)
+9. **Hybrid retrieval** (BM25 + dense KNN fused by rank; recovers the exact lexical
+   anchors dense vectors blur — same RediSearch engine, so an index change plus
+   client-side fusion, not new infrastructure; ADR-0006)
+10. **Retrieval-model fine-tuning** on telemetry-mined pairs (judge-passed answers as
+    positives, borderline band as hard negatives; the embedder half means open weights →
+    full re-embed + recalibration; last lever — standing training-pipeline cost)
